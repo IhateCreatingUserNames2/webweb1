@@ -6,7 +6,8 @@ const app = express();
 const PORT = 3000;
 
 // Replace with your MiniMax API key
-const MINI_MAX_API_KEY = 'your_minimax_api_key';
+const MINI_MAX_API_KEY = process.env.MINI_MAX_API_KEY;
+
 
 app.use(bodyParser.json());
 app.use(express.static('public')); // Serve static files (index.html)
