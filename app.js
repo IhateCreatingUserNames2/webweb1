@@ -5,8 +5,13 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Replace with your MiniMax API key from environment variables
+// Get MiniMax API Key from environment variables
 const MINI_MAX_API_KEY = process.env.MINI_MAX_API_KEY;
+
+if (!MINI_MAX_API_KEY) {
+    console.error('Error: MINI_MAX_API_KEY is not set. Please configure it in the environment variables.');
+    process.exit(1); // Exit if the key is missing
+}
 
 // Serve static files like index.html
 app.use(express.static(__dirname));
@@ -30,13 +35,13 @@ app.post('/chat', async (req, res) => {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${MINI_MAX_API_KEY}`,
+                'Authorization': `Bearer ${MINI_MAX_API_KEY}`, // Correctly format the Authorization header
             },
             body: JSON.stringify({
-                model: 'MiniMax-Text-01',
-                max_tokens: 256, // Adjust based on your needs
-                temperature: 0.7, // Default randomness
-                top_p: 0.95, // Default nucleus sampling
+                model: 'MiniMax-Text-01', // Ensure this model exists in MiniMax documentation
+                max_tokens: 256, // Adjust as needed, within the API limits
+                temperature: 0.7, // Set temperature for randomness
+                top_p: 0.95, // Nucleus sampling parameter
                 messages: [
                     {
                         role: 'system',
