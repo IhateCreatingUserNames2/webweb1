@@ -6,7 +6,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Get MiniMax API Key from environment variables
-const MINI_MAX_API_KEY = process.env.MINI_MAX_API_KEY;
+const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY;
 
 if (!MINI_MAX_API_KEY) {
     console.error('Error: MINI_MAX_API_KEY is not set. Please configure it in the environment variables.');
