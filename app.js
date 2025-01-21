@@ -3,14 +3,20 @@ const bodyParser = require('body-parser');
 const fetch = require('node-fetch');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Replace with your MiniMax API key
 const MINI_MAX_API_KEY = process.env.MINI_MAX_API_KEY;
 
+// Serve static files from the current directory
+app.use(express.static(__dirname));
+
+// Serve `index.html` on the root route
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/index.html');
+});
 
 app.use(bodyParser.json());
-app.use(express.static('public')); // Serve static files (index.html)
 
 app.post('/chat', async (req, res) => {
     const { message } = req.body;
