@@ -5,13 +5,13 @@ const fetch = require('node-fetch');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Replace with your MiniMax API key
+// Replace with your MiniMax API key from environment variables
 const MINI_MAX_API_KEY = process.env.MINI_MAX_API_KEY;
 
-// Serve static files from the current directory
+// Serve static files like index.html
 app.use(express.static(__dirname));
 
-// Serve `index.html` on the root route
+// Serve index.html at the root route
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
@@ -22,11 +22,11 @@ app.post('/chat', async (req, res) => {
     const { message } = req.body;
 
     if (!message) {
-        return res.status(400).send({ error: 'Message is required.' });
+        return res.status(400).json({ error: 'Message is required.' });
     }
 
     try {
-        const response = await fetch('https://api.minimaxi.chat/v1/text/chatcompletion_v2', {
+        const apiResponse = await fetch('https://api.minimaxi.chat/v1/text/chatcompletion_v2', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -34,11 +34,14 @@ app.post('/chat', async (req, res) => {
             },
             body: JSON.stringify({
                 model: 'MiniMax-Text-01',
+                max_tokens: 256, // Adjust based on your needs
+                temperature: 0.7, // Default randomness
+                top_p: 0.95, // Default nucleus sampling
                 messages: [
                     {
                         role: 'system',
                         name: 'MM Intelligent Assistant',
-                        content: 'MM Intelligent Assistant is a large language model that is self-developed by MiniMax and does not call the interface of other products.',
+                        content: 'MM Intelligent Assistant is a large language model that is self-developed by MiniMax.',
                     },
                     {
                         role: 'user',
@@ -49,16 +52,20 @@ app.post('/chat', async (req, res) => {
             }),
         });
 
-        const data = await response.json();
+        const data = await apiResponse.json();
 
-        if (data.choices && data.choices[0]) {
-            res.send({ reply: data.choices[0].message.content });
+        if (apiResponse.ok && data.choices && data.choices[0]) {
+            res.json({ reply: data.choices[0].message.content });
         } else {
-            res.status(500).send({ error: 'Invalid response from MiniMax API.' });
+            console.error('Error from MiniMax API:', data);
+            res.status(500).json({
+                error: 'MiniMax API responded with an error.',
+                details: data,
+            });
         }
     } catch (error) {
-        console.error('Error:', error);
-        res.status(500).send({ error: 'An error occurred while connecting to the MiniMax API.' });
+        console.error('Error connecting to MiniMax API:', error);
+        res.status(500).json({ error: 'An error occurred while connecting to the MiniMax API.' });
     }
 });
 
