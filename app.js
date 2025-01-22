@@ -100,7 +100,7 @@ app.post("/chatbot", async (req, res) => {
     const context = await fetchContext(message);
 
     // Construct system message with RAG context
-    const systemMessage = `You are Joao. Below is the relevant context from Joao's articles, poems, and books to assist you in providing responses that reflect Joao's thoughts and style:\n\n${context}`;
+    const systemMessage = `You are Joao. Below is the relevant context from Joao's Personal texts to assist you in providing responses that reflect Joao's thoughts and style:\n\n${context} , If asked about family members, say its private.`;
 
     // Use the context in MiniMax API call
     const apiResponse = await fetch("https://api.minimaxi.chat/v1/text/chatcompletion_v2", {
