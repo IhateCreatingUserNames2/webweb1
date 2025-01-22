@@ -196,53 +196,26 @@ app.post('/completion', async (req, res) => {
  * Endpoint for LLMUnity "template" calls
  */
 app.post('/template', async (req, res) => {
-    const { prompt } = req.body;
-    if (!prompt) {
-        return res.status(400).json({ error: 'Prompt is required for template requests.' });
-    }
+    // Example template definition
+    const template = {
+        name: "chatml",
+        description: "ChatML Template",
+        system_prefix: "<|im_start|>system\n",
+        system_suffix: "<|im_end|>\n",
+        user_prefix: "<|im_start|>user\n",
+        assistant_prefix: "<|im_start|>assistant\n",
+        message_separator: "\n",
+        stopwords: ["<|im_end|>", "<|im_start|>"],
+    };
 
     try {
-        const apiResponse = await fetch('https://api.minimaxi.chat/v1/text/chatcompletion_v2', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${MINI_MAX_API_KEY}`,
-            },
-            body: JSON.stringify({
-                model: 'MiniMax-Text-01',
-                max_tokens: 256,
-                temperature: 0.7,
-                top_p: 0.95,
-                messages: [
-                    {
-                        role: 'system',
-                        content: 'A conversation between a user and an assistant.',
-                    },
-                    {
-                        role: 'user',
-                        content: prompt,
-                    },
-                ],
-            }),
-        });
-
-        const data = await apiResponse.json();
-
-        if (apiResponse.ok && data.choices && data.choices[0]) {
-            // Return { "content": "...the LLM-generated text..." }
-            res.json({ content: data.choices[0].message.content });
-        } else {
-            console.error('Error from MiniMax API:', data);
-            res.status(500).json({
-                error: 'MiniMax API responded with an error.',
-                details: data,
-            });
-        }
+        res.status(200).json(template); // Send the template as a JSON response
     } catch (error) {
-        console.error('Error connecting to MiniMax API:', error);
-        res.status(500).json({ error: 'An error occurred while connecting to the MiniMax API.' });
+        console.error('Error in /template endpoint:', error);
+        res.status(500).json({ error: 'An error occurred while generating the template.' });
     }
 });
+
 
 // Start the Server
 app.listen(PORT, () => {
