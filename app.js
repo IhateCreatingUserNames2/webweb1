@@ -72,7 +72,7 @@ async function fetchContext(message) {
 
   const queryVector = embeddingData.data[0].embedding;
   const pineconeResponse = await index.query({
-    topK: 10,
+    topK: 20,
     vector: queryVector,
     includeMetadata: true,
   });
@@ -111,7 +111,7 @@ app.post("/chatbot", async (req, res) => {
       },
       body: JSON.stringify({
         model: "MiniMax-Text-01",
-        max_tokens: 512,
+        max_tokens: 1024,
         temperature: 0.8, // Based on your preference
         top_p: 0.9,
         messages: [
