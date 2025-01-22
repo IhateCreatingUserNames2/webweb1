@@ -6,7 +6,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Get MiniMax, Pinecone, and OpenAI API keys from environment variables
-const MINI_MAX_API_KEY = process.env.MINI_MAX_API_KEY;
+const MINI_MAX_API_KEY = process.env.MiniMAX_API_KEY;
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // For OpenAI Embedding API
 const PINECONE_HOST = "https://ada-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Your Pinecone host
