@@ -2,7 +2,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const fetch = (...args) =>
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
-const { PineconeClient } = require("@pinecone-database/pinecone");
+const { init, Index } = require("@pinecone-database/pinecone");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
