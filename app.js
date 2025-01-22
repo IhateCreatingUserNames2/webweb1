@@ -22,8 +22,7 @@ if (!MINI_MAX_API_KEY || !PINECONE_API_KEY || !OPENAI_API_KEY) {
 }
 
 // Initialize Pinecone client
-const pinecone = new PineconeClient();
-pinecone.init({
+init({
   apiKey: PINECONE_API_KEY,
   environment: PINECONE_ENVIRONMENT,
 });
