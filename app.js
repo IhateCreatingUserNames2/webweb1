@@ -13,6 +13,14 @@ if (!MINI_MAX_API_KEY) {
     process.exit(1); // Exit if the key is missing
 }
 
+// Middleware to log all incoming requests
+app.use((req, res, next) => {
+    console.log(`\n[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+    console.log('Headers:', req.headers);
+    console.log('Body:', req.body);
+    next();
+});
+
 // Serve static files like index.html
 app.use(express.static(__dirname));
 
