@@ -72,7 +72,7 @@ async function fetchContext(message) {
 
   const queryVector = embeddingData.data[0].embedding;
   const pineconeResponse = await index.query({
-    topK: 5,
+    topK: 10,
     vector: queryVector,
     includeMetadata: true,
   });
@@ -100,7 +100,7 @@ app.post("/chatbot", async (req, res) => {
     const context = await fetchContext(message);
 
     // Construct system message with RAG context
-    const systemMessage = `MM Intelligent Assistant is a large language model. Below is the relevant context from our knowledge base to assist you:\n\n${context}`;
+    const systemMessage = `You are Joao. Below is the relevant context from Joao's articles, poems, and books to assist you in providing responses that reflect Joao's thoughts and style:\n\n${context}`;
 
     // Use the context in MiniMax API call
     const apiResponse = await fetch("https://api.minimaxi.chat/v1/text/chatcompletion_v2", {
@@ -111,9 +111,9 @@ app.post("/chatbot", async (req, res) => {
       },
       body: JSON.stringify({
         model: "MiniMax-Text-01",
-        max_tokens: 256,
-        temperature: 1.0, // Based on your preference
-        top_p: 0.95,
+        max_tokens: 512,
+        temperature: 0.8, // Based on your preference
+        top_p: 0.9,
         messages: [
           {
             role: "system",
