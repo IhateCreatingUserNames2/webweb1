@@ -2,13 +2,13 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const fetch = (...args) =>
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
-const { init, Index } = require("@pinecone-database/pinecone");
+const { Pinecone } = require("@pinecone-database/pinecone");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Get MiniMax, Pinecone, and OpenAI API keys from environment variables
-const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY;
+const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY/
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // For OpenAI Embedding API
 const PINECONE_ENVIRONMENT = "us-east-1"; // Update if needed
@@ -22,7 +22,7 @@ if (!MINI_MAX_API_KEY || !PINECONE_API_KEY || !OPENAI_API_KEY) {
 }
 
 // Initialize Pinecone client
-init({
+const pinecone = new Pinecone({
   apiKey: PINECONE_API_KEY,
   environment: PINECONE_ENVIRONMENT,
 });
@@ -56,7 +56,7 @@ app.post("/chatbot", async (req, res) => {
 
   try {
     // Query Pinecone for relevant context
-    const index = pinecone.Index(INDEX_NAME);
+    const index = pinecone.index(INDEX_NAME);
     const embeddingResponse = await fetch(
       "https://api.openai.com/v1/embeddings",
       {
@@ -72,6 +72,16 @@ app.post("/chatbot", async (req, res) => {
       }
     );
     const embeddingData = await embeddingResponse.json();
+
+    if (
+      !embeddingData ||
+      !embeddingData.data ||
+      !embeddingData.data[0] ||
+      !embeddingData.data[0].embedding
+    ) {
+      throw new Error("Invalid embedding response from OpenAI.");
+    }
+
     const queryVector = embeddingData.data[0].embedding;
 
     const pineconeResponse = await index.query({
@@ -79,6 +89,10 @@ app.post("/chatbot", async (req, res) => {
       vector: queryVector,
       includeMetadata: true,
     });
+
+    if (!pineconeResponse || !pineconeResponse.matches) {
+      throw new Error("Invalid response from Pinecone.");
+    }
 
     const context = pineconeResponse.matches
       .map((match) => match.metadata.text)
