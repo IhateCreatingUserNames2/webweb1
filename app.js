@@ -246,6 +246,32 @@ app.post("/completion", async (req, res) => {
   }
 });
 
+/**
+ * Endpoint for LLMUnity "template" calls
+ */
+app.post("/template", async (req, res) => {
+  // Example template definition
+  const template = {
+    name: "chatml",
+    description: "ChatML Template",
+    system_prefix: "<|im_start|>system\n",
+    system_suffix: "<|im_end|>\n",
+    user_prefix: "<|im_start|>user\n",
+    assistant_prefix: "<|im_start|>assistant\n",
+    message_separator: "\n",
+    stopwords: ["<|im_end|>", "<|im_start|>"],
+  };
+
+  try {
+    res.status(200).json(template); // Send the template as a JSON response
+  } catch (error) {
+    console.error("Error in /template endpoint:", error);
+    res.status(500).json({ error: "An error occurred while generating the template." });
+  }
+});
+
+
+
 // Start the Server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
