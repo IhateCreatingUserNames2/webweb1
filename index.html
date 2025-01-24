@@ -7,9 +7,29 @@
 </head>
 <body>
   <h1>Formulário para Processamento de Dados</h1>
-  <form id="llmForm">
-    <label>Você possui energia no local? (Sim ou Não)</label><br>
-    <input type="text" name="possuiEnergia" required><br><br>
+  <form id="llmForm" enctype="multipart/form-data">
+    <label>Você possui energia no local?</label><br>
+    <input type="checkbox" name="possuiEnergia" value="sim"> Sim<br>
+    <input type="checkbox" name="possuiEnergia" value="nao"> Não<br><br>
+
+    <div id="energiaNao" style="display: none;">
+      <label>Quantidade de equipamentos elétricos:</label><br>
+      <input type="number" name="equipamentos"><br><br>
+
+      <label>Potência média dos equipamentos (kW):</label><br>
+      <input type="number" name="potenciaMedia" step="0.1"><br><br>
+
+      <label>Horas de utilização durante o dia:</label><br>
+      <input type="number" name="horasDia"><br><br>
+
+      <label>Horas de utilização durante a noite:</label><br>
+      <input type="number" name="horasNoite"><br><br>
+    </div>
+
+    <div id="energiaSim" style="display: none;">
+      <label>Consegue enviar sua fatura de energia?</label><br>
+      <input type="file" name="faturaEnergia" accept="image/*,application/pdf"><br><br>
+    </div>
 
     <label>Tipo de fixação dos módulos solares:</label><br>
     <select name="tipoFixacao" required>
@@ -18,23 +38,9 @@
       <option value="telhadoFibrocimento">Telhado Fibrocimento</option>
     </select><br><br>
 
-    <label>Já possui módulos? (Sim ou Não)</label><br>
-    <input type="text" name="possuiModulos" required><br><br>
-
-    <label>Quantidade de equipamentos elétricos:</label><br>
-    <input type="number" name="equipamentos"><br><br>
-
-    <label>Potência média dos equipamentos (kW):</label><br>
-    <input type="number" name="potenciaMedia" step="0.1"><br><br>
-
-    <label>Horas de utilização durante o dia:</label><br>
-    <input type="number" name="horasDia"><br><br>
-
-    <label>Horas de utilização durante a noite:</label><br>
-    <input type="number" name="horasNoite"><br><br>
-
-    <label>Consegue enviar sua fatura de energia? (Link ou descrição)</label><br>
-    <input type="text" name="faturaEnergia"><br><br>
+    <label>Já possui módulos?</label><br>
+    <input type="checkbox" name="possuiModulos" value="sim"> Sim<br>
+    <input type="checkbox" name="possuiModulos" value="nao"> Não<br><br>
 
     <label>Qual a sua região?</label><br>
     <input type="text" name="regiao" required><br><br>
@@ -46,19 +52,30 @@
   </form>
 
   <script>
+    const energiaSim = document.getElementById('energiaSim');
+    const energiaNao = document.getElementById('energiaNao');
+
+    document.querySelectorAll('input[name="possuiEnergia"]').forEach(el => {
+      el.addEventListener('change', (e) => {
+        if (e.target.value === 'sim') {
+          energiaSim.style.display = 'block';
+          energiaNao.style.display = 'none';
+        } else {
+          energiaSim.style.display = 'none';
+          energiaNao.style.display = 'block';
+        }
+      });
+    });
+
     const form = document.getElementById('llmForm');
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
       const formData = new FormData(form);
-      const data = Object.fromEntries(formData.entries());
 
       const response = await fetch('/submit', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(data)
+        body: formData
       });
 
       const result = await response.json();
