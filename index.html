@@ -1,123 +1,69 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatBot</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f9f9f9;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-        }
-
-        #chat-container {
-            width: 100%;
-            max-width: 500px;
-            height: 70%;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            padding: 10px;
-            background-color: #fff;
-            overflow-y: scroll;
-            margin-bottom: 10px;
-        }
-
-        .message {
-            margin: 5px 0;
-        }
-
-        .message.user {
-            text-align: right;
-            color: blue;
-        }
-
-        .message.assistant {
-            text-align: left;
-            color: green;
-        }
-
-        #input-container {
-            width: 100%;
-            max-width: 500px;
-            display: flex;
-        }
-
-        input {
-            flex: 1;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            outline: none;
-        }
-
-        button {
-            padding: 10px;
-            border: none;
-            background-color: #007bff;
-            color: #fff;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: #0056b3;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Formulário LLM</title>
 </head>
 <body>
-    <div id="chat-container"></div>
-    <div id="input-container">
-        <input type="text" id="user-input" placeholder="Type your message here...">
-        <button onclick="sendMessage()">Send</button>
-    </div>
+  <h1>Formulário para Processamento de Dados</h1>
+  <form id="llmForm">
+    <label>Você possui energia no local? (Sim ou Não)</label><br>
+    <input type="text" name="possuiEnergia" required><br><br>
 
-    <script>
-        const chatContainer = document.getElementById('chat-container');
+    <label>Tipo de fixação dos módulos solares:</label><br>
+    <select name="tipoFixacao" required>
+      <option value="telhadoMetalico">Telhado Metálico</option>
+      <option value="fixacaoSolo">Fixação em Solo</option>
+      <option value="telhadoFibrocimento">Telhado Fibrocimento</option>
+    </select><br><br>
 
-        function addMessage(content, role) {
-            const messageElement = document.createElement('div');
-            messageElement.className = `message ${role}`;
-            messageElement.textContent = content;
-            chatContainer.appendChild(messageElement);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
+    <label>Já possui módulos? (Sim ou Não)</label><br>
+    <input type="text" name="possuiModulos" required><br><br>
 
-        async function sendMessage() {
-            const userInput = document.getElementById('user-input');
-            const message = userInput.value.trim();
+    <label>Quantidade de equipamentos elétricos:</label><br>
+    <input type="number" name="equipamentos"><br><br>
 
-            if (!message) return;
+    <label>Potência média dos equipamentos (kW):</label><br>
+    <input type="number" name="potenciaMedia" step="0.1"><br><br>
 
-            addMessage(message, 'user');
-            userInput.value = '';
+    <label>Horas de utilização durante o dia:</label><br>
+    <input type="number" name="horasDia"><br><br>
 
-            try {
-                const response = await fetch('/chatbot', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ message })
-                });
+    <label>Horas de utilização durante a noite:</label><br>
+    <input type="number" name="horasNoite"><br><br>
 
-                const data = await response.json();
+    <label>Consegue enviar sua fatura de energia? (Link ou descrição)</label><br>
+    <input type="text" name="faturaEnergia"><br><br>
 
-                if (data && data.reply) {
-                    addMessage(data.reply, 'assistant');
-                } else {
-                    addMessage('Something went wrong. Please try again.', 'assistant');
-                }
-            } catch (error) {
-                addMessage('Error connecting to the server.', 'assistant');
-            }
-        }
-    </script>
+    <label>Qual a sua região?</label><br>
+    <input type="text" name="regiao" required><br><br>
+
+    <label>Qual o tempo máximo que você já ficou sem energia?</label><br>
+    <input type="text" name="tempoSemEnergia" required><br><br>
+
+    <button type="submit">Enviar</button>
+  </form>
+
+  <script>
+    const form = document.getElementById('llmForm');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
+
+      const response = await fetch('/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+
+      const result = await response.json();
+      alert(result.mensagem);
+    });
+  </script>
 </body>
 </html>
