@@ -11,7 +11,11 @@ const { Configuration, OpenAIApi } = require('openai');
 
 // 2) Configura com sua API Key
 const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY, // Defina no Render.com ou .env
+  apiKey: process.env.OPENAI_API_KEY,
+  baseOptions: {
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity
+  }
 });
 const openai = new OpenAIApi(configuration);
 
