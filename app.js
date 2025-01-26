@@ -3,21 +3,24 @@ const express = require('express');
 const fileUpload = require('express-fileupload');
 const fs = require('fs');
 const path = require('path');
-const axios = require('axios');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
+
+// 1) Importa o SDK oficial da OpenAI
+const { Configuration, OpenAIApi } = require('openai');
+
+// 2) Configura com sua API Key
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY, // Defina no Render.com ou .env
+});
+const openai = new OpenAIApi(configuration);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Se você tiver um endpoint ou1 custom (exemplo fictício):
-const O1_API_URL = process.env.O1_API_URL || 'https://api.seu-o1.com/v1/completions';
-const O1_API_KEY = process.env.O1_API_KEY || 'coloque_sua_chave_aqui';
-
-// Para armazenar o texto extraído dos arquivos
-let docsTexts = {}; 
-// Para armazenar histórico de mensagens (user -> bot)
-let conversationHistory = [];
+// Armazenamento simples em memória
+let docsTexts = {};          // { nomeArquivo: textoExtraido, ... }
+let conversationHistory = []; // [{ user: 'User'/'Bot', message: '...' }, ...]
 
 // Middlewares
 app.use(express.json());
@@ -32,11 +35,13 @@ app.post('/chat', async (req, res) => {
   }
 
   try {
-    // Concatena todo o texto dos arquivos em um grande string 
-    // (em produção, deve-se usar chunking + embeddings, mas aqui é simples).
+    // Concatena todo o texto (BEM simples; não recomendado para arquivos grandes)
     const allDocsText = Object.values(docsTexts).join('\n\n---\n\n');
 
-    // Monta prompt com o contexto
+    // Construímos um prompt que inclua:
+    // - Dados dos arquivos
+    // - Histórico de conversa
+    // - Pergunta do usuário
     const prompt = `
 CONTEXT (from uploaded files):
 ${allDocsText}
@@ -45,38 +50,29 @@ CHAT HISTORY:
 ${conversationHistory.map((c) => `${c.user}: ${c.message}`).join('\n')}
 
 USER: ${message}
-BOT: 
+BOT:
 `;
 
-    // Chama a API 'o1' via axios
-    const response = await axios.post(
-      O1_API_URL,
-      {
-        model: 'o1',  // se você tiver variações, ex. 'o1-mini-2024-09-12'
-        prompt: prompt,
-        max_tokens: 200,
-        temperature: 0.7
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${O1_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+    // 3) Chama a API do OpenAI com o modelo 'o1'
+    const response = await openai.createCompletion({
+      model: 'o1',             // conforme docs
+      prompt: prompt,
+      max_tokens: 200,
+      temperature: 0.7,
+    });
 
-    // Obtenha a resposta da estrutura que sua API retorna
-    const botReply = response.data?.choices?.[0]?.text?.trim() || 
-                     'Desculpe, não foi possível obter resposta.';
+    // Pega a resposta do modelo
+    const botReply = response.data?.choices?.[0]?.text?.trim() 
+                  || 'Desculpe, não foi possível obter resposta.';
 
-    // Armazena no histórico
+    // Atualiza histórico
     conversationHistory.push({ user: 'User', message });
     conversationHistory.push({ user: 'Bot', message: botReply });
 
-    res.json({ reply: botReply });
+    return res.json({ reply: botReply });
   } catch (error) {
-    console.error('Error in chatbot:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Error processing the message' });
+    console.error('Error in chatbot:', error?.response?.data || error.message);
+    return res.status(500).json({ error: 'Error processing the message' });
   }
 });
 
@@ -88,22 +84,23 @@ app.post('/upload', async (req, res) => {
 
   const file = req.files.file;
   const uploadDir = path.join(__dirname, 'uploads');
+
+  // Cria pasta se não existir
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
   }
 
   const uploadPath = path.join(uploadDir, file.name);
 
-  // Salvar o arquivo fisicamente
+  // Salvar fisicamente o arquivo
   file.mv(uploadPath, async (err) => {
     if (err) {
       console.error('File upload error:', err);
       return res.status(500).send(err);
     }
 
-    // Extração de texto
+    // Tentar extrair texto do arquivo
     let extractedText = '';
-
     try {
       if (file.name.toLowerCase().endsWith('.pdf')) {
         const dataBuffer = fs.readFileSync(uploadPath);
@@ -113,19 +110,21 @@ app.post('/upload', async (req, res) => {
         const result = await mammoth.extractRawText({ path: uploadPath });
         extractedText = result.value;
       } else {
-        // Tenta ler como texto puro
+        // Tenta ler como texto simples
         extractedText = fs.readFileSync(uploadPath, 'utf8');
       }
     } catch (parseError) {
       console.error('Error extracting text:', parseError);
-      // Se quiser, pode continuar com extração vazia
       extractedText = '';
     }
 
-    // Armazena em memória
+    // Salva texto na memória, indexado pelo nome do arquivo
     docsTexts[file.name] = extractedText;
 
-    res.json({ message: 'File uploaded and parsed successfully', fileName: file.name });
+    return res.json({
+      message: 'File uploaded and parsed successfully',
+      fileName: file.name
+    });
   });
 });
 
@@ -135,7 +134,7 @@ app.get('/files', (req, res) => {
   res.json(list);
 });
 
-// Serve index.html (frontend)
+// Serve o index.html (UI)
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
