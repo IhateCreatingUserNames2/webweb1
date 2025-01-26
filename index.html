@@ -1,86 +1,213 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Formulário LLM</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chatbot + File Upload</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background: #f7f7f7;
+    }
+    .container {
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      border-radius: 8px;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    #chat-window {
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      height: 300px;
+      overflow-y: auto;
+      padding: 10px;
+      margin-bottom: 10px;
+      background-color: #fafafa;
+    }
+    .message {
+      margin: 5px 0;
+      padding: 8px;
+      border-radius: 4px;
+      width: fit-content;
+      max-width: 80%;
+    }
+    .user-message {
+      background-color: #d1e7dd;
+      align-self: flex-start;
+    }
+    .bot-message {
+      background-color: #f8d7da;
+      align-self: flex-end;
+    }
+    .chat-input {
+      display: flex;
+      gap: 10px;
+    }
+    #message-input {
+      flex: 1;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+    #send-btn {
+      padding: 8px 16px;
+      background-color: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #send-btn:hover {
+      background-color: #0056b3;
+    }
+    .upload-section {
+      margin-top: 20px;
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 5px;
+      background-color: #fafafa;
+    }
+    #files-list {
+      list-style-type: none;
+      padding: 0;
+      margin: 0;
+      margin-top: 10px;
+    }
+    #files-list li {
+      margin: 5px 0;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
 </head>
 <body>
-  <h1>Formulário para Processamento de Dados</h1>
-  <form id="llmForm" enctype="multipart/form-data">
-    <label>Você possui energia no local?</label><br>
-    <input type="checkbox" name="possuiEnergia" value="sim"> Sim<br>
-    <input type="checkbox" name="possuiEnergia" value="nao"> Não<br><br>
-
-    <div id="energiaNao" style="display: none;">
-      <label>Quantidade de equipamentos elétricos:</label><br>
-      <input type="number" name="equipamentos"><br><br>
-
-      <label>Potência média dos equipamentos (kW):</label><br>
-      <input type="number" name="potenciaMedia" step="0.1"><br><br>
-
-      <label>Horas de utilização durante o dia:</label><br>
-      <input type="number" name="horasDia"><br><br>
-
-      <label>Horas de utilização durante a noite:</label><br>
-      <input type="number" name="horasNoite"><br><br>
+  <div class="container">
+    <h1>Chatbot + File Upload</h1>
+    <div id="chat-window"></div>
+    <div class="chat-input">
+      <input type="text" id="message-input" placeholder="Digite sua mensagem..." />
+      <button id="send-btn">Enviar</button>
     </div>
 
-    <div id="energiaSim" style="display: none;">
-      <label>Consegue enviar sua fatura de energia?</label><br>
-      <input type="file" name="faturaEnergia" accept="image/*,application/pdf"><br><br>
+    <div class="upload-section">
+      <h3>Carregar Arquivos</h3>
+      <form id="upload-form">
+        <input type="file" id="file-input" name="file" />
+        <button type="submit">Upload</button>
+      </form>
+      <ul id="files-list"></ul>
     </div>
-
-    <label>Tipo de fixação dos módulos solares:</label><br>
-    <select name="tipoFixacao" required>
-      <option value="telhadoMetalico">Telhado Metálico</option>
-      <option value="fixacaoSolo">Fixação em Solo</option>
-      <option value="telhadoFibrocimento">Telhado Fibrocimento</option>
-    </select><br><br>
-
-    <label>Já possui módulos?</label><br>
-    <input type="checkbox" name="possuiModulos" value="sim"> Sim<br>
-    <input type="checkbox" name="possuiModulos" value="nao"> Não<br><br>
-
-    <label>Qual a sua região?</label><br>
-    <input type="text" name="regiao" required><br><br>
-
-    <label>Qual o tempo máximo que você já ficou sem energia?</label><br>
-    <input type="text" name="tempoSemEnergia" required><br><br>
-
-    <button type="submit">Enviar</button>
-  </form>
+  </div>
 
   <script>
-    const energiaSim = document.getElementById('energiaSim');
-    const energiaNao = document.getElementById('energiaNao');
+    const chatWindow = document.getElementById('chat-window');
+    const messageInput = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
+    const uploadForm = document.getElementById('upload-form');
+    const fileInput = document.getElementById('file-input');
+    const filesList = document.getElementById('files-list');
 
-    document.querySelectorAll('input[name="possuiEnergia"]').forEach(el => {
-      el.addEventListener('change', (e) => {
-        if (e.target.value === 'sim') {
-          energiaSim.style.display = 'block';
-          energiaNao.style.display = 'none';
-        } else {
-          energiaSim.style.display = 'none';
-          energiaNao.style.display = 'block';
-        }
-      });
-    });
+    // Função para adicionar mensagens no chat
+    function appendMessage(text, sender) {
+      const messageDiv = document.createElement('div');
+      messageDiv.classList.add('message');
+      messageDiv.classList.add(sender === 'User' ? 'user-message' : 'bot-message');
+      messageDiv.innerText = text;
+      chatWindow.appendChild(messageDiv);
+      chatWindow.scrollTop = chatWindow.scrollHeight; // Rola até o final
+    }
 
-    const form = document.getElementById('llmForm');
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
+    // Botão de envio de mensagem
+    sendBtn.addEventListener('click', () => {
+      const userMessage = messageInput.value.trim();
+      if (!userMessage) return;
 
-      const formData = new FormData(form);
+      // Mostra mensagem do usuário
+      appendMessage(userMessage, 'User');
+      messageInput.value = '';
 
-      const response = await fetch('/submit', {
+      // Envia mensagem ao servidor /chat
+      fetch('/chat', {
         method: 'POST',
-        body: formData
-      });
-
-      const result = await response.json();
-      alert(result.mensagem);
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: userMessage }),
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.reply) {
+            appendMessage(data.reply, 'Bot');
+          } else {
+            appendMessage('Erro: sem resposta do servidor.', 'Bot');
+          }
+        })
+        .catch(error => {
+          console.error('Erro ao enviar mensagem:', error);
+          appendMessage('Ocorreu um erro ao enviar a mensagem.', 'Bot');
+        });
     });
+
+    // Formulário de upload de arquivos
+    uploadForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!fileInput.files.length) {
+        alert('Nenhum arquivo selecionado.');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+
+      fetch('/upload', {
+        method: 'POST',
+        body: formData,
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.fileName) {
+            // Atualiza lista de arquivos
+            loadFiles();
+            fileInput.value = '';
+            alert('Arquivo enviado com sucesso!');
+          } else {
+            alert('Falha no upload.');
+          }
+        })
+        .catch(err => {
+          console.error('Erro no upload:', err);
+          alert('Erro no upload');
+        });
+    });
+
+    // Busca e exibe os arquivos carregados
+    function loadFiles() {
+      fetch('/files')
+        .then(response => response.json())
+        .then(data => {
+          filesList.innerHTML = '';
+          data.forEach(file => {
+            const li = document.createElement('li');
+            li.textContent = file.name;
+            filesList.appendChild(li);
+          });
+        })
+        .catch(error => {
+          console.error('Erro ao obter a lista de arquivos:', error);
+        });
+    }
+
+    // Carrega a lista de arquivos inicialmente
+    loadFiles();
   </script>
 </body>
 </html>
