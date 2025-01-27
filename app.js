@@ -6,7 +6,7 @@ const path = require('path');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const { Configuration, OpenAIApi } = require('openai');
-const { PineconeClient } = require('@pinecone-database/pinecone');
+const { Pinecone } = require('@pinecone-database/pinecone');
 
 // Configure OpenAI
 const configuration = new Configuration({
@@ -19,33 +19,51 @@ const configuration = new Configuration({
 const openai = new OpenAIApi(configuration);
 
 // Configure Pinecone
-const pinecone = new PineconeClient();
+let pinecone;
 
-(async () => {
+async function initPinecone() {
   try {
-    await pinecone.init({
-      apiKey: process.env.PINECONE_API_KEY, // Your Pinecone API key
-      environment: 'us-east-1-aws', // Adjust to your Pinecone environment
+    pinecone = new Pinecone({
+      apiKey: process.env.PINECONE_API_KEY,
     });
-    console.log('Pinecone initialized');
+
+    console.log('Pinecone initialized successfully.');
   } catch (error) {
     console.error('Error initializing Pinecone:', error.message);
     process.exit(1);
   }
-})();
+}
 
-const indexName = 'bluew';
-let pineconeIndex;
-
-// Initialize the Pinecone index
-(async () => {
+async function setupIndex(indexName) {
   try {
-    pineconeIndex = pinecone.Index(indexName);
-    console.log(`Pinecone index '${indexName}' initialized.`);
+    console.log(`Ensuring Pinecone index '${indexName}' exists...`);
+    await pinecone.createIndex({
+      name: indexName,
+      dimension: 1536, // Adjust this based on your embedding model
+      metric: 'cosine',
+      suppressConflicts: true,
+      waitUntilReady: true,
+      spec: {
+        serverless: {
+          cloud: 'aws',
+          region: process.env.PINECONE_ENVIRONMENT,
+        },
+      },
+    });
+
+    return pinecone.index(indexName);
   } catch (error) {
-    console.error(`Error initializing Pinecone index '${indexName}':`, error.message);
+    console.error(`Error setting up index '${indexName}':`, error.message);
     process.exit(1);
   }
+}
+
+let pineconeIndex;
+
+// Initialize Pinecone and setup index
+(async () => {
+  await initPinecone();
+  pineconeIndex = await setupIndex(process.env.PINECONE_INDEX_NAME || 'bluew');
 })();
 
 const app = express();
@@ -89,7 +107,7 @@ async function generateAndStoreEmbeddings(textChunks, metadata) {
           {
             id: `${metadata.id}-chunk-${index}`,
             values: embedding,
-            metadata: { ...metadata, chunk: chunk },
+            metadata: { ...metadata, chunk },
           },
         ],
       });
@@ -201,7 +219,7 @@ BOT RESPONSE:
     // Call OpenAI API
     const response = await openai.createCompletion({
       model: 'gpt-4',
-      prompt: prompt,
+      prompt,
       max_tokens: 1500,
       temperature: 0.7,
     });
