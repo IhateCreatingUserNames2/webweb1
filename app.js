@@ -11,10 +11,6 @@ const { Pinecone } = require('@pinecone-database/pinecone');
 // Configure OpenAI
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
-  baseOptions: {
-    maxBodyLength: Infinity,
-    maxContentLength: Infinity,
-  },
 });
 const openai = new OpenAIApi(configuration);
 
@@ -26,7 +22,6 @@ async function initPinecone() {
     pinecone = new Pinecone({
       apiKey: process.env.PINECONE_API_KEY,
     });
-
     console.log('Pinecone initialized successfully.');
   } catch (error) {
     console.error('Error initializing Pinecone:', error.message);
@@ -37,21 +32,20 @@ async function initPinecone() {
 async function setupIndex(indexName) {
   try {
     console.log(`Ensuring Pinecone index '${indexName}' exists...`);
+    const existingIndexes = await pinecone.listIndexes(); // Get existing indexes
 
-    // Check if the index already exists
-    const existingIndexes = await pinecone.listIndexes();
-    if (!existingIndexes.includes(indexName)) {
+    if (!existingIndexes.indexes.includes(indexName)) { // Adjust to match Pinecone's response structure
       console.log(`Index '${indexName}' does not exist. Creating...`);
       await pinecone.createIndex({
         name: indexName,
-        dimension: 3072, // Match your embedding model dimensions (e.g., text-embedding-3-large)
+        dimension: 3072, // Ensure this matches the embedding model
         metric: 'cosine',
         suppressConflicts: true,
         waitUntilReady: true,
         spec: {
           serverless: {
             cloud: 'aws',
-            region: process.env.PINECONE_ENVIRONMENT || 'us-east-1', // Ensure environment variable is set
+            region: process.env.PINECONE_ENVIRONMENT || 'us-east-1',
           },
         },
       });
@@ -60,8 +54,7 @@ async function setupIndex(indexName) {
       console.log(`Index '${indexName}' already exists.`);
     }
 
-    // Connect to the index
-    return pinecone.index(indexName);
+    return pinecone.index(indexName); // Connect to the existing or created index
   } catch (error) {
     console.error(`Error setting up index '${indexName}':`, error.message);
     process.exit(1);
@@ -180,7 +173,7 @@ app.post('/upload', async (req, res) => {
 
 // Endpoint: Chat with RAG
 app.post('/chat', async (req, res) => {
-  const { message, selectedFiles } = req.body;
+  const { message } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Message is required' });
   }
@@ -202,18 +195,8 @@ app.post('/chat', async (req, res) => {
       filter: { type: 'file' },
     });
 
-    const conversationResults = await pineconeIndex.query({
-      topK: 5,
-      includeMetadata: true,
-      vector: queryEmbedding,
-      filter: { type: 'conversation' },
-    });
-
     // Combine relevant contexts
-    const contexts = [
-      ...fileResults.matches.map((match) => match.metadata.chunk),
-      ...conversationResults.matches.map((match) => match.metadata.chunk),
-    ].join('\n\n---\n\n');
+    const contexts = fileResults.matches.map((match) => match.metadata.chunk).join('\n\n---\n\n');
 
     // Construct prompt
     const prompt = `
