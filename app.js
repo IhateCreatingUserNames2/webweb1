@@ -5,11 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
-
-// Importa o SDK oficial da OpenAI
 const { Configuration, OpenAIApi } = require('openai');
+const { PineconeClient } = require('@pinecone-database/pinecone');
 
-// Configura com sua API Key
+// Configure OpenAI
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
   baseOptions: {
@@ -19,70 +18,48 @@ const configuration = new Configuration({
 });
 const openai = new OpenAIApi(configuration);
 
+// Configure Pinecone
+const pinecone = new PineconeClient();
+pinecone.init({
+  apiKey: process.env.PINECONE_API_KEY, // Set your Pinecone API key
+  environment: 'us-east-1-aws', // Adjust if necessary
+});
+const indexName = 'bluew';
+const pineconeIndex = pinecone.Index(indexName);
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Armazenamento simples em memória
-let docsTexts = {};          // { nomeArquivo: textoExtraido, ... }
+// Simple in-memory storage
 let conversationHistory = []; // [{ user: 'User'/'Bot', message: '...' }, ...]
 
-// Middlewares
+// Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(fileUpload());
 
-// Endpoint do chatbot
-app.post('/chat', async (req, res) => {
-  const { message, selectedFiles } = req.body; // Recebe os arquivos selecionados do frontend
-  if (!message) {
-    return res.status(400).json({ error: 'Message is required' });
-  }
-
+// Helper: Generate Embeddings and Upsert to Pinecone
+async function generateAndStoreEmbeddings(fileName, fileText) {
   try {
-    // Filtra apenas os arquivos selecionados
-    const allDocsText = (selectedFiles || [])
-      .map(fileName => docsTexts[fileName]) // Busca o conteúdo dos arquivos selecionados
-      .join('\n\n---\n\n');
+    // Generate embeddings using OpenAI
+    const response = await openai.createEmbedding({
+      model: 'text-embedding-ada-002',
+      input: fileText,
+    });
+    const embedding = response.data.data[0].embedding;
 
-    // Construímos um prompt que inclua:
-    // - Dados dos arquivos selecionados
-    // - Histórico de conversa
-    // - Pergunta do usuário
-    const prompt = `
-CONTEXT (from selected files):
-${allDocsText}
-
-CHAT HISTORY:
-${conversationHistory.map((c) => `${c.user}: ${c.message}`).join('\n')}
-
-USER: ${message}
-BOT:
-`;
-
-    // Chama a API do OpenAI com o modelo especificado
-    const response = await openai.createCompletion({
-      model: 'gpt-4o', // Ou outro modelo suportado
-      prompt: prompt,
-      max_tokens: 2048,
-      temperature: 0.7,
+    // Upsert embedding to Pinecone
+    await pineconeIndex.upsert({
+      vectors: [{ id: fileName, values: embedding }],
     });
 
-    // Pega a resposta do modelo
-    const botReply = response.data?.choices?.[0]?.text?.trim()
-                  || 'Desculpe, não foi possível obter resposta.';
-
-    // Atualiza histórico
-    conversationHistory.push({ user: 'User', message });
-    conversationHistory.push({ user: 'Bot', message: botReply });
-
-    return res.json({ reply: botReply });
+    console.log(`Embeddings for ${fileName} stored successfully.`);
   } catch (error) {
-    console.error('Error in chatbot:', error?.response?.data || error.message);
-    return res.status(500).json({ error: 'Error processing the message' });
+    console.error('Error generating/storing embeddings:', error.message);
   }
-});
+}
 
-// Endpoint para upload de arquivos
+// Endpoint: Upload Files and Store Embeddings
 app.post('/upload', async (req, res) => {
   if (!req.files || Object.keys(req.files).length === 0) {
     return res.status(400).send('No files were uploaded.');
@@ -91,21 +68,21 @@ app.post('/upload', async (req, res) => {
   const file = req.files.file;
   const uploadDir = path.join(__dirname, 'uploads');
 
-  // Cria pasta se não existir
+  // Create uploads folder if it doesn't exist
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
   }
 
   const uploadPath = path.join(uploadDir, file.name);
 
-  // Salvar fisicamente o arquivo
+  // Save file
   file.mv(uploadPath, async (err) => {
     if (err) {
       console.error('File upload error:', err);
       return res.status(500).send(err);
     }
 
-    // Tentar extrair texto do arquivo
+    // Extract text from file
     let extractedText = '';
     try {
       if (file.name.toLowerCase().endsWith('.pdf')) {
@@ -116,55 +93,117 @@ app.post('/upload', async (req, res) => {
         const result = await mammoth.extractRawText({ path: uploadPath });
         extractedText = result.value;
       } else {
-        // Tenta ler como texto simples
+        // Read plain text files
         extractedText = fs.readFileSync(uploadPath, 'utf8');
       }
+
+      // Generate and store embeddings
+      await generateAndStoreEmbeddings(file.name, extractedText);
+
+      res.json({
+        message: 'File uploaded and processed successfully',
+        fileName: file.name,
+      });
     } catch (parseError) {
       console.error('Error extracting text:', parseError);
-      extractedText = '';
+      res.status(500).send('Error processing file.');
     }
-
-    // Salva texto na memória, indexado pelo nome do arquivo
-    docsTexts[file.name] = extractedText;
-
-    return res.json({
-      message: 'File uploaded and parsed successfully',
-      fileName: file.name
-    });
   });
 });
 
-// Endpoint para listar arquivos
-app.get('/files', (req, res) => {
-  const list = Object.keys(docsTexts).map((fileName) => ({ name: fileName }));
-  res.json(list);
-});
-
-// Serve o index.html (UI)
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// Endpoint para deletar arquivo
-app.delete('/delete-file', (req, res) => {
-  const fileName = req.query.name;
-  if (!fileName || !docsTexts[fileName]) {
-    return res.status(400).json({ success: false, message: 'Arquivo não encontrado.' });
+// Endpoint: Chat with RAG
+app.post('/chat', async (req, res) => {
+  const { message, selectedFiles } = req.body;
+  if (!message) {
+    return res.status(400).json({ error: 'Message is required' });
   }
 
-  const filePath = path.join(__dirname, 'uploads', fileName);
-  fs.unlink(filePath, (err) => {
-    if (err) {
-      console.error('Erro ao deletar arquivo:', err);
-      return res.status(500).json({ success: false, message: 'Erro ao deletar arquivo.' });
+  try {
+    // Retrieve embeddings for selected files
+    const retrievedTexts = [];
+    for (const fileName of selectedFiles) {
+      const queryEmbedding = (
+        await openai.createEmbedding({
+          model: 'text-embedding-ada-002',
+          input: message,
+        })
+      ).data.data[0].embedding;
+
+      const queryResponse = await pineconeIndex.query({
+        topK: 1,
+        includeMetadata: true,
+        vector: queryEmbedding,
+      });
+
+      const closestMatch = queryResponse.matches?.[0];
+      if (closestMatch) {
+        retrievedTexts.push(closestMatch.metadata.text);
+      }
     }
 
-    delete docsTexts[fileName]; // Remove do armazenamento em memória
-    res.json({ success: true, message: 'Arquivo deletado com sucesso.' });
-  });
+    // Construct prompt
+    const context = retrievedTexts.join('\n\n---\n\n');
+    const prompt = `
+CONTEXT (from relevant files):
+${context}
+
+CHAT HISTORY:
+${conversationHistory.map((c) => `${c.user}: ${c.message}`).join('\n')}
+
+USER: ${message}
+BOT:
+`;
+
+    // Call OpenAI API
+    const response = await openai.createCompletion({
+      model: 'gpt-4o',
+      prompt: prompt,
+      max_tokens: 2048,
+      temperature: 0.7,
+    });
+
+    const botReply = response.data?.choices?.[0]?.text?.trim() || 'No response generated.';
+
+    // Update conversation history
+    conversationHistory.push({ user: 'User', message });
+    conversationHistory.push({ user: 'Bot', message: botReply });
+
+    res.json({ reply: botReply });
+  } catch (error) {
+    console.error('Error in chatbot:', error?.response?.data || error.message);
+    res.status(500).json({ error: 'Error processing the message.' });
+  }
 });
 
-// Sobe servidor
+// Endpoint: List Files
+app.get('/files', async (req, res) => {
+  try {
+    const fileList = (await pineconeIndex.describeIndexStats({})).namespaces;
+    const files = Object.keys(fileList || {}).map((fileName) => ({ name: fileName }));
+    res.json(files);
+  } catch (error) {
+    console.error('Error listing files:', error.message);
+    res.status(500).send('Error listing files.');
+  }
+});
+
+// Endpoint: Delete File
+app.delete('/delete-file', async (req, res) => {
+  const { name } = req.query;
+  if (!name) {
+    return res.status(400).json({ success: false, message: 'File name is required.' });
+  }
+
+  try {
+    await pineconeIndex.delete({ ids: [name] });
+    res.json({ success: true, message: `File ${name} deleted successfully.` });
+  } catch (error) {
+    console.error('Error deleting file:', error.message);
+    res.status(500).json({ success: false, message: 'Error deleting file.' });
+  }
+});
+
+// Start Server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
