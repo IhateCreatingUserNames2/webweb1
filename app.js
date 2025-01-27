@@ -211,6 +211,7 @@ BOT RESPONSE:
     res.status(500).json({ error: "Error processing the message." });
   }
 });
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
