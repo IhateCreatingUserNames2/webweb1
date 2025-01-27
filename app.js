@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 
 // MiniMax API Configuration
 const MINIMAX_API_URL = 'https://api.minimaxi.chat/v1/text/chatcompletion_v2';
-const MINIMAX_API_KEY = process.env.MiniMax_API_KEY; // Set in your .env file
+const MiniMax_API_KEY = process.env.MiniMax_API_KEY; // Set in your .env file
 
 // Simple in-memory storage
 let docsTexts = {}; // { fileName: extractedText, ... }
@@ -59,12 +59,12 @@ app.post('/chat', async (req, res) => {
       {
         model: 'MiniMax-Text-01', // Use the preferred MiniMax model
         messages: messages,
-        max_tokens: 2048, // Adjust as needed
+        max_tokens: 950000, // Adjust as needed
         temperature: 0.7,
       },
       {
         headers: {
-          Authorization: `Bearer ${MINIMAX_API_KEY}`,
+          Authorization: `Bearer ${MiniMax_API_KEY}`,
           'Content-Type': 'application/json',
         },
       }
