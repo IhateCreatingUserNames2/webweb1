@@ -6,11 +6,11 @@ const fetch = require("node-fetch");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Get API keys from environment variables
+// Get MiniMax, Pinecone, and OpenAI API keys from environment variables
+const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY; 
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const MINI_MAX_API_KEY = process.env.MINI_MAX_API_KEY;
-const PINECONE_HOST = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Pinecone host
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // For OpenAI Embedding API
+const PINECONE_HOST = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Your Pinecone host
 const INDEX_NAME = "bluew";
 
 if (!PINECONE_API_KEY || !OPENAI_API_KEY || !MINI_MAX_API_KEY) {
