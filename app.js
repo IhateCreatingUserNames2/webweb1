@@ -6,10 +6,10 @@ const path = require('path');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 
-// 1) Importa o SDK oficial da OpenAI
+// Importa o SDK oficial da OpenAI
 const { Configuration, OpenAIApi } = require('openai');
 
-// 2) Configura com sua API Key
+// Configura com sua API Key
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
   baseOptions: {
@@ -33,21 +33,23 @@ app.use(fileUpload());
 
 // Endpoint do chatbot
 app.post('/chat', async (req, res) => {
-  const { message } = req.body;
+  const { message, selectedFiles } = req.body; // Recebe os arquivos selecionados do frontend
   if (!message) {
     return res.status(400).json({ error: 'Message is required' });
   }
 
   try {
-    // Concatena todo o texto (BEM simples; não recomendado para arquivos grandes)
-    const allDocsText = Object.values(docsTexts).join('\n\n---\n\n');
+    // Filtra apenas os arquivos selecionados
+    const allDocsText = (selectedFiles || [])
+      .map(fileName => docsTexts[fileName]) // Busca o conteúdo dos arquivos selecionados
+      .join('\n\n---\n\n');
 
     // Construímos um prompt que inclua:
-    // - Dados dos arquivos
+    // - Dados dos arquivos selecionados
     // - Histórico de conversa
     // - Pergunta do usuário
     const prompt = `
-CONTEXT (from uploaded files):
+CONTEXT (from selected files):
 ${allDocsText}
 
 CHAT HISTORY:
@@ -57,16 +59,16 @@ USER: ${message}
 BOT:
 `;
 
-    // 3) Chama a API do OpenAI com o modelo 'o1'
+    // Chama a API do OpenAI com o modelo especificado
     const response = await openai.createCompletion({
-      model: 'gpt-4o',             // conforme docs
+      model: 'gpt-4o', // Ou outro modelo suportado
       prompt: prompt,
-      max_tokens: 20000,
+      max_tokens: 2048,
       temperature: 0.7,
     });
 
     // Pega a resposta do modelo
-    const botReply = response.data?.choices?.[0]?.text?.trim() 
+    const botReply = response.data?.choices?.[0]?.text?.trim()
                   || 'Desculpe, não foi possível obter resposta.';
 
     // Atualiza histórico
@@ -143,7 +145,6 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-
 // Endpoint para deletar arquivo
 app.delete('/delete-file', (req, res) => {
   const fileName = req.query.name;
@@ -162,9 +163,6 @@ app.delete('/delete-file', (req, res) => {
     res.json({ success: true, message: 'Arquivo deletado com sucesso.' });
   });
 });
-
-
-
 
 // Sobe servidor
 app.listen(PORT, () => {
