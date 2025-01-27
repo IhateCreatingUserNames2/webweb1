@@ -19,11 +19,14 @@ const configuration = new Configuration({
 const openai = new OpenAIApi(configuration);
 
 // Configure Pinecone
-const pinecone = new PineconeClient();
-pinecone.init({
-  apiKey: process.env.PINECONE_API_KEY, // Set your Pinecone API key
-  environment: 'us-east-1-aws', // Adjust if necessary
-});
+(async () => {
+  const pinecone = new PineconeClient();
+  await pinecone.init({
+    apiKey: process.env.PINECONE_API_KEY, // Your Pinecone API key
+    environment: 'us-east-1-aws', // Adjust to your environment
+  });
+
+module.exports = pinecone;  
 const indexName = 'bluew';
 const pineconeIndex = pinecone.Index(indexName);
 
