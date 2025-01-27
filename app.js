@@ -70,7 +70,7 @@ async function fetchContext(message) {
 
   // Query Pinecone for context
   const pineconeResponse = await index.query({
-    topK: 20,
+    topK: 35,
     vector: queryVector,
     includeMetadata: true,
   });
@@ -113,7 +113,7 @@ async function generateResponse(message, context, provider) {
             content: message
           }
         ],
-        max_tokens: 1500,
+        max_tokens: 15000,
         temperature: 0.7
       }),
     });
@@ -132,7 +132,7 @@ async function generateResponse(message, context, provider) {
       },
       body: JSON.stringify({
         model: "MiniMax-Text-01",
-        max_tokens: 1024,
+        max_tokens: 102400,
         temperature: 0.8,
         top_p: 0.9,
         messages: [
