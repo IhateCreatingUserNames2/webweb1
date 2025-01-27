@@ -13,8 +13,8 @@ const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
   baseOptions: {
     maxBodyLength: Infinity,
-    maxContentLength: Infinity
-  }
+    maxContentLength: Infinity,
+  },
 });
 const openai = new OpenAIApi(configuration);
 
@@ -30,36 +30,47 @@ const pineconeIndex = pinecone.Index(indexName);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Simple in-memory storage
-let conversationHistory = []; // [{ user: 'User'/'Bot', message: '...' }, ...]
-
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(fileUpload());
 
-// Helper: Generate Embeddings and Upsert to Pinecone
-async function generateAndStoreEmbeddings(fileName, fileText) {
+// Helper: Chunk Text
+function chunkText(text, chunkSize = 500) {
+  const chunks = [];
+  for (let i = 0; i < text.length; i += chunkSize) {
+    chunks.push(text.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+// Helper: Generate and Store Embeddings
+async function generateAndStoreEmbeddings(textChunks, metadata) {
   try {
-    // Generate embeddings using OpenAI
-    const response = await openai.createEmbedding({
-      model: 'text-embedding-ada-002',
-      input: fileText,
-    });
-    const embedding = response.data.data[0].embedding;
+    for (const [index, chunk] of textChunks.entries()) {
+      const response = await openai.createEmbedding({
+        model: 'text-embedding-3-large',
+        input: chunk,
+      });
+      const embedding = response.data.data[0].embedding;
 
-    // Upsert embedding to Pinecone
-    await pineconeIndex.upsert({
-      vectors: [{ id: fileName, values: embedding }],
-    });
-
-    console.log(`Embeddings for ${fileName} stored successfully.`);
+      await pineconeIndex.upsert({
+        vectors: [
+          {
+            id: `${metadata.id}-chunk-${index}`,
+            values: embedding,
+            metadata: { ...metadata, chunk: chunk },
+          },
+        ],
+      });
+    }
+    console.log(`Embeddings stored for ${metadata.id}`);
   } catch (error) {
-    console.error('Error generating/storing embeddings:', error.message);
+    console.error('Error storing embeddings:', error.message);
   }
 }
 
-// Endpoint: Upload Files and Store Embeddings
+// Endpoint: Upload Files
 app.post('/upload', async (req, res) => {
   if (!req.files || Object.keys(req.files).length === 0) {
     return res.status(400).send('No files were uploaded.');
@@ -68,23 +79,20 @@ app.post('/upload', async (req, res) => {
   const file = req.files.file;
   const uploadDir = path.join(__dirname, 'uploads');
 
-  // Create uploads folder if it doesn't exist
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
   }
 
   const uploadPath = path.join(uploadDir, file.name);
 
-  // Save file
   file.mv(uploadPath, async (err) => {
     if (err) {
       console.error('File upload error:', err);
       return res.status(500).send(err);
     }
 
-    // Extract text from file
-    let extractedText = '';
     try {
+      let extractedText = '';
       if (file.name.toLowerCase().endsWith('.pdf')) {
         const dataBuffer = fs.readFileSync(uploadPath);
         const pdfData = await pdfParse(dataBuffer);
@@ -93,12 +101,13 @@ app.post('/upload', async (req, res) => {
         const result = await mammoth.extractRawText({ path: uploadPath });
         extractedText = result.value;
       } else {
-        // Read plain text files
         extractedText = fs.readFileSync(uploadPath, 'utf8');
       }
 
-      // Generate and store embeddings
-      await generateAndStoreEmbeddings(file.name, extractedText);
+      const textChunks = chunkText(extractedText, 500); // Chunk text
+      const metadata = { id: file.name, type: 'file' };
+
+      await generateAndStoreEmbeddings(textChunks, metadata);
 
       res.json({
         message: 'File uploaded and processed successfully',
@@ -113,93 +122,70 @@ app.post('/upload', async (req, res) => {
 
 // Endpoint: Chat with RAG
 app.post('/chat', async (req, res) => {
-  const { message, selectedFiles } = req.body;
+  const { message } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Message is required' });
   }
 
   try {
-    // Retrieve embeddings for selected files
-    const retrievedTexts = [];
-    for (const fileName of selectedFiles) {
-      const queryEmbedding = (
-        await openai.createEmbedding({
-          model: 'text-embedding-ada-002',
-          input: message,
-        })
-      ).data.data[0].embedding;
+    // Generate embedding for user message
+    const queryEmbedding = (
+      await openai.createEmbedding({
+        model: 'text-embedding-3-large',
+        input: message,
+      })
+    ).data.data[0].embedding;
 
-      const queryResponse = await pineconeIndex.query({
-        topK: 1,
-        includeMetadata: true,
-        vector: queryEmbedding,
-      });
+    // Retrieve relevant contexts from Pinecone
+    const fileResults = await pineconeIndex.query({
+      topK: 5,
+      includeMetadata: true,
+      vector: queryEmbedding,
+      filter: { type: 'file' },
+    });
 
-      const closestMatch = queryResponse.matches?.[0];
-      if (closestMatch) {
-        retrievedTexts.push(closestMatch.metadata.text);
-      }
-    }
+    const conversationResults = await pineconeIndex.query({
+      topK: 5,
+      includeMetadata: true,
+      vector: queryEmbedding,
+      filter: { type: 'conversation' },
+    });
+
+    // Combine relevant contexts
+    const contexts = [
+      ...fileResults.matches.map((match) => match.metadata.chunk),
+      ...conversationResults.matches.map((match) => match.metadata.chunk),
+    ].join('\n\n---\n\n');
 
     // Construct prompt
-    const context = retrievedTexts.join('\n\n---\n\n');
     const prompt = `
-CONTEXT (from relevant files):
-${context}
+CONTEXT:
+${contexts}
 
-CHAT HISTORY:
-${conversationHistory.map((c) => `${c.user}: ${c.message}`).join('\n')}
+USER QUESTION:
+${message}
 
-USER: ${message}
-BOT:
+BOT RESPONSE:
 `;
 
     // Call OpenAI API
     const response = await openai.createCompletion({
       model: 'gpt-4o',
       prompt: prompt,
-      max_tokens: 2048,
+      max_tokens: 1500,
       temperature: 0.7,
     });
 
     const botReply = response.data?.choices?.[0]?.text?.trim() || 'No response generated.';
 
-    // Update conversation history
-    conversationHistory.push({ user: 'User', message });
-    conversationHistory.push({ user: 'Bot', message: botReply });
+    // Store conversation in Pinecone
+    await generateAndStoreEmbeddings([message], { id: `user-${Date.now()}`, type: 'conversation' });
+    await generateAndStoreEmbeddings([botReply], { id: `bot-${Date.now()}`, type: 'conversation' });
 
     res.json({ reply: botReply });
   } catch (error) {
     console.error('Error in chatbot:', error?.response?.data || error.message);
     res.status(500).json({ error: 'Error processing the message.' });
-  }
-});
-
-// Endpoint: List Files
-app.get('/files', async (req, res) => {
-  try {
-    const fileList = (await pineconeIndex.describeIndexStats({})).namespaces;
-    const files = Object.keys(fileList || {}).map((fileName) => ({ name: fileName }));
-    res.json(files);
-  } catch (error) {
-    console.error('Error listing files:', error.message);
-    res.status(500).send('Error listing files.');
-  }
-});
-
-// Endpoint: Delete File
-app.delete('/delete-file', async (req, res) => {
-  const { name } = req.query;
-  if (!name) {
-    return res.status(400).json({ success: false, message: 'File name is required.' });
-  }
-
-  try {
-    await pineconeIndex.delete({ ids: [name] });
-    res.json({ success: true, message: `File ${name} deleted successfully.` });
-  } catch (error) {
-    console.error('Error deleting file:', error.message);
-    res.status(500).json({ success: false, message: 'Error deleting file.' });
   }
 });
 
