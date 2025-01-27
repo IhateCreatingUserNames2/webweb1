@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chatbot + File Upload (RAG + Pinecone)</title>
+  <title>Chatbot + File Upload (o1)</title>
   <style>
     body {
       margin: 0; padding: 0;
@@ -52,20 +52,19 @@
       list-style-type: none; padding: 0; margin: 0; margin-top: 10px;
     }
     #files-list li {
-      margin: 5px 0;
+      margin: 5px 0; 
       display: flex;
       align-items: center;
-      justify-content: space-between;
-    }
-    .file-item {
-      display: flex; align-items: center;
       gap: 10px;
+    }
+    .memory-checkbox {
+      margin-right: 10px;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Chatbot + File Upload (RAG + Pinecone)</h1>
+    <h1>Chatbot + File Upload (o1)</h1>
     <div id="chat-window"></div>
     <div class="chat-input">
       <input type="text" id="message-input" placeholder="Digite sua mensagem..."/>
@@ -90,6 +89,8 @@
     const fileInput = document.getElementById('file-input');
     const filesList = document.getElementById('files-list');
 
+    let selectedFiles = []; // Track files for memory inclusion
+
     function appendMessage(text, sender) {
       const div = document.createElement('div');
       div.classList.add('message', sender === 'User' ? 'user-message' : 'bot-message');
@@ -102,19 +103,16 @@
       const userMessage = messageInput.value.trim();
       if (!userMessage) return;
 
-      const selectedFiles = [];
-      const checkboxes = document.querySelectorAll('.file-checkbox:checked');
-      checkboxes.forEach(checkbox => {
-        selectedFiles.push(checkbox.dataset.filename);
-      });
-
       appendMessage(userMessage, 'User');
       messageInput.value = '';
+
+      // Collect selected files for RAG
+      const selectedFileNames = selectedFiles.map(file => file.name);
 
       fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage, selectedFiles })
+        body: JSON.stringify({ message: userMessage, selectedFiles: selectedFileNames }),
       })
       .then(r => r.json())
       .then(data => {
@@ -161,37 +159,30 @@
         .then(r => r.json())
         .then(data => {
           filesList.innerHTML = '';
+          selectedFiles = []; // Reset selected files
+
           data.forEach(file => {
             const li = document.createElement('li');
-            const fileItem = document.createElement('div');
-            fileItem.classList.add('file-item');
-
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
-            checkbox.classList.add('file-checkbox');
-            checkbox.dataset.filename = file.name;
+            checkbox.classList.add('memory-checkbox');
+            checkbox.addEventListener('change', (e) => {
+              if (e.target.checked) {
+                selectedFiles.push(file);
+              } else {
+                selectedFiles = selectedFiles.filter(f => f.name !== file.name);
+              }
+            });
 
-            const label = document.createElement('span');
-            label.textContent = file.name;
-
-            if (file.memory) {
-              label.textContent += ' (Memory)';
-              checkbox.checked = true;
-              checkbox.disabled = true; // Already processed, cannot be unchecked
-            }
-
-            fileItem.appendChild(checkbox);
-            fileItem.appendChild(label);
-            li.appendChild(fileItem);
-
+            li.appendChild(checkbox);
+            li.appendChild(document.createTextNode(file.name));
             filesList.appendChild(li);
           });
         })
         .catch(err => console.error('Erro ao obter lista de arquivos:', err));
     }
 
-    // Carrega a lista de arquivos ao abrir a página
-    loadFiles();
+    loadFiles(); // Load files on page load
   </script>
 </body>
 </html>
