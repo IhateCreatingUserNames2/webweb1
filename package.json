@@ -1,7 +1,7 @@
 {
   "name": "chatbot-o1",
   "version": "1.0.0",
-  "description": "Chatbot using o1 from OpenAI",
+  "description": "Chatbot using o1 from OpenAI with RAG and Pinecone integration",
   "main": "app.js",
   "scripts": {
     "start": "node app.js"
@@ -13,6 +13,10 @@
     "mammoth": "^1.5.5",
     "pdf-parse": "^1.1.1",
     "openai": "^3.2.1",
-    "fs-extra": "^11.1.1"
+    "fs-extra": "^11.1.1",
+    "@pinecone-database/pinecone": "^2.1.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }
