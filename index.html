@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chatbot + File Upload (o1)</title>
+  <title>Chatbot + File Upload (RAG + Pinecone)</title>
   <style>
     body {
       margin: 0; padding: 0;
@@ -51,12 +51,21 @@
     #files-list {
       list-style-type: none; padding: 0; margin: 0; margin-top: 10px;
     }
-    #files-list li { margin: 5px 0; }
+    #files-list li {
+      margin: 5px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .file-item {
+      display: flex; align-items: center;
+      gap: 10px;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Chatbot + File Upload (o1)</h1>
+    <h1>Chatbot + File Upload (RAG + Pinecone)</h1>
     <div id="chat-window"></div>
     <div class="chat-input">
       <input type="text" id="message-input" placeholder="Digite sua mensagem..."/>
@@ -93,14 +102,19 @@
       const userMessage = messageInput.value.trim();
       if (!userMessage) return;
 
+      const selectedFiles = [];
+      const checkboxes = document.querySelectorAll('.file-checkbox:checked');
+      checkboxes.forEach(checkbox => {
+        selectedFiles.push(checkbox.dataset.filename);
+      });
+
       appendMessage(userMessage, 'User');
       messageInput.value = '';
 
-      // Chama o endpoint /chat
       fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage })
+        body: JSON.stringify({ message: userMessage, selectedFiles })
       })
       .then(r => r.json())
       .then(data => {
@@ -149,7 +163,27 @@
           filesList.innerHTML = '';
           data.forEach(file => {
             const li = document.createElement('li');
-            li.textContent = file.name;
+            const fileItem = document.createElement('div');
+            fileItem.classList.add('file-item');
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.classList.add('file-checkbox');
+            checkbox.dataset.filename = file.name;
+
+            const label = document.createElement('span');
+            label.textContent = file.name;
+
+            if (file.memory) {
+              label.textContent += ' (Memory)';
+              checkbox.checked = true;
+              checkbox.disabled = true; // Already processed, cannot be unchecked
+            }
+
+            fileItem.appendChild(checkbox);
+            fileItem.appendChild(label);
+            li.appendChild(fileItem);
+
             filesList.appendChild(li);
           });
         })
