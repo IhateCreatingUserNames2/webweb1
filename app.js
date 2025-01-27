@@ -25,7 +25,7 @@ const pinecone = new PineconeClient();
   try {
     await pinecone.init({
       apiKey: process.env.PINECONE_API_KEY, // Your Pinecone API key
-      environment: 'us-east-1-aws', // Adjust to your environment
+      environment: 'us-east-1-aws', // Adjust to your Pinecone environment
     });
     console.log('Pinecone initialized');
   } catch (error) {
@@ -79,7 +79,7 @@ async function generateAndStoreEmbeddings(textChunks, metadata) {
   try {
     for (const [index, chunk] of textChunks.entries()) {
       const response = await openai.createEmbedding({
-        model: 'text-embedding-3-large',
+        model: 'text-embedding-ada-002',
         input: chunk,
       });
       const embedding = response.data.data[0].embedding;
@@ -152,7 +152,7 @@ app.post('/upload', async (req, res) => {
 
 // Endpoint: Chat with RAG
 app.post('/chat', async (req, res) => {
-  const { message } = req.body;
+  const { message, selectedFiles } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Message is required' });
   }
@@ -161,7 +161,7 @@ app.post('/chat', async (req, res) => {
     // Generate embedding for user message
     const queryEmbedding = (
       await openai.createEmbedding({
-        model: 'text-embedding-3-large',
+        model: 'text-embedding-ada-002',
         input: message,
       })
     ).data.data[0].embedding;
@@ -200,7 +200,7 @@ BOT RESPONSE:
 
     // Call OpenAI API
     const response = await openai.createCompletion({
-      model: 'gpt-4o',
+      model: 'gpt-4',
       prompt: prompt,
       max_tokens: 1500,
       temperature: 0.7,
