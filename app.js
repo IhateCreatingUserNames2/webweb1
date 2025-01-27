@@ -5,25 +5,33 @@ const fs = require('fs');
 const path = require('path');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
-const axios = require('axios');
+
+// 1) Importa o SDK oficial da OpenAI
+const { Configuration, OpenAIApi } = require('openai');
+
+// 2) Configura com sua API Key
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+  baseOptions: {
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity
+  }
+});
+const openai = new OpenAIApi(configuration);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// MiniMax API Configuration
-const MINIMAX_API_URL = 'https://api.minimaxi.chat/v1/text/chatcompletion_v2';
-const MiniMax_API_KEY = process.env.MiniMax_API_KEY; // Set in your .env file
-
-// Simple in-memory storage
-let docsTexts = {}; // { fileName: extractedText, ... }
-let conversationHistory = []; // [{ role: 'user'/'assistant', content: '...' }, ...]
+// Armazenamento simples em memória
+let docsTexts = {};          // { nomeArquivo: textoExtraido, ... }
+let conversationHistory = []; // [{ user: 'User'/'Bot', message: '...' }, ...]
 
 // Middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(fileUpload());
 
-// Chatbot endpoint
+// Endpoint do chatbot
 app.post('/chat', async (req, res) => {
   const { message } = req.body;
   if (!message) {
@@ -31,64 +39,48 @@ app.post('/chat', async (req, res) => {
   }
 
   try {
-    // Concatenate text from uploaded files (truncate if needed)
-    const MAX_TEXT_LENGTH = 50000; // Adjust as per MiniMax's token limit
-    const allDocsText = Object.values(docsTexts)
-      .join('\n\n---\n\n')
-      .slice(0, MAX_TEXT_LENGTH);
+    // Concatena todo o texto (BEM simples; não recomendado para arquivos grandes)
+    const allDocsText = Object.values(docsTexts).join('\n\n---\n\n');
 
-    // Create the conversation history with context from files
-    const messages = [
-      {
-        role: 'system',
-        name: 'MM Intelligent Assistant',
-        content:
-          'MM Intelligent Assistant is a large language model that processes user-provided context and conversation history to generate responses.',
-      },
-      ...conversationHistory,
-      {
-        role: 'user',
-        name: 'user',
-        content: `Context from files:\n${allDocsText}\n\nUser's question: ${message}`,
-      },
-    ];
+    // Construímos um prompt que inclua:
+    // - Dados dos arquivos
+    // - Histórico de conversa
+    // - Pergunta do usuário
+    const prompt = `
+CONTEXT (from uploaded files):
+${allDocsText}
 
-    // Call MiniMax API
-    const response = await axios.post(
-      MINIMAX_API_URL,
-      {
-        model: 'MiniMax-Text-01', // Use the preferred MiniMax model
-        messages: messages,
-        max_tokens: 950000, // Adjust as needed
-        temperature: 0.7,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${MiniMax_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+CHAT HISTORY:
+${conversationHistory.map((c) => `${c.user}: ${c.message}`).join('\n')}
 
-    // Get the bot's response
-    const botReply =
-      response.data.choices?.[0]?.message?.content ||
-      'Sorry, no response was generated.';
+USER: ${message}
+BOT:
+`;
 
-    // Update conversation history
-    conversationHistory.push({ role: 'user', content: message });
-    conversationHistory.push({ role: 'assistant', content: botReply });
+    // 3) Chama a API do OpenAI com o modelo 'o1'
+    const response = await openai.createCompletion({
+      model: 'gpt-4o',             // conforme docs
+      prompt: prompt,
+      max_tokens: 20000,
+      temperature: 0.7,
+    });
 
-    res.json({ reply: botReply });
+    // Pega a resposta do modelo
+    const botReply = response.data?.choices?.[0]?.text?.trim() 
+                  || 'Desculpe, não foi possível obter resposta.';
+
+    // Atualiza histórico
+    conversationHistory.push({ user: 'User', message });
+    conversationHistory.push({ user: 'Bot', message: botReply });
+
+    return res.json({ reply: botReply });
   } catch (error) {
-    console.error('Error in chatbot:', error.response?.data || error.message);
-    res
-      .status(500)
-      .json({ error: 'Error processing the message or connecting to MiniMax' });
+    console.error('Error in chatbot:', error?.response?.data || error.message);
+    return res.status(500).json({ error: 'Error processing the message' });
   }
 });
 
-// File upload endpoint
+// Endpoint para upload de arquivos
 app.post('/upload', async (req, res) => {
   if (!req.files || Object.keys(req.files).length === 0) {
     return res.status(400).send('No files were uploaded.');
@@ -97,38 +89,61 @@ app.post('/upload', async (req, res) => {
   const file = req.files.file;
   const uploadDir = path.join(__dirname, 'uploads');
 
-  // Create uploads directory if not exists
+  // Cria pasta se não existir
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
   }
 
   const uploadPath = path.join(uploadDir, file.name);
 
-  // Save the file
+  // Salvar fisicamente o arquivo
   file.mv(uploadPath, async (err) => {
     if (err) {
       console.error('File upload error:', err);
       return res.status(500).send(err);
     }
 
+    // Tentar extrair texto do arquivo
     let extractedText = '';
     try {
       if (file.name.toLowerCase().endsWith('.pdf')) {
-        const pdfData = await pdfParse(fs.readFileSync(uploadPath));
+        const dataBuffer = fs.readFileSync(uploadPath);
+        const pdfData = await pdfParse(dataBuffer);
         extractedText = pdfData.text;
       } else if (file.name.toLowerCase().endsWith('.docx')) {
         const result = await mammoth.extractRawText({ path: uploadPath });
         extractedText = result.value;
       } else {
+        // Tenta ler como texto simples
         extractedText = fs.readFileSync(uploadPath, 'utf8');
       }
     } catch (parseError) {
       console.error('Error extracting text:', parseError);
+      extractedText = '';
     }
 
-    // Store extracted text
+    // Salva texto na memória, indexado pelo nome do arquivo
     docsTexts[file.name] = extractedText;
 
-    res.json({
+    return res.json({
       message: 'File uploaded and parsed successfully',
       fileName: file.name
+    });
+  });
+});
+
+// Endpoint para listar arquivos
+app.get('/files', (req, res) => {
+  const list = Object.keys(docsTexts).map((fileName) => ({ name: fileName }));
+  res.json(list);
+});
+
+// Serve o index.html (UI)
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Sobe servidor
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
