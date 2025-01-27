@@ -59,9 +59,9 @@ BOT:
 
     // 3) Chama a API do OpenAI com o modelo 'o1'
     const response = await openai.createCompletion({
-      model: 'o1',             // conforme docs
+      model: 'gpt-4o',             // conforme docs
       prompt: prompt,
-      max_tokens: 200,
+      max_tokens: 20000,
       temperature: 0.7,
     });
 
