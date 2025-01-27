@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 
 // MiniMax API Configuration
 const MINIMAX_API_URL = 'https://api.minimaxi.chat/v1/text/chatcompletion_v2';
-const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY; // Set in your .env file
+const MINIMAX_API_KEY = process.env.MiniMax_API_KEY; // Set in your .env file
 
 // Simple in-memory storage
 let docsTexts = {}; // { fileName: extractedText, ... }
