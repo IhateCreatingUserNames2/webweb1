@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 3000;
 // Get API keys from environment variables
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY;
+const MINI_MAX_API_KEY = process.env.MINI_MAX_API_KEY;
 const PINECONE_HOST = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Pinecone host
 const INDEX_NAME = "bluew";
 
@@ -43,6 +43,7 @@ app.get("/", (req, res) => {
 async function fetchContext(message) {
   const index = pinecone.index(INDEX_NAME, PINECONE_HOST);
 
+  // Call OpenAI Embedding API
   const embeddingResponse = await fetch("https://api.openai.com/v1/embeddings", {
     method: "POST",
     headers: {
@@ -56,24 +57,29 @@ async function fetchContext(message) {
   });
 
   const embeddingData = await embeddingResponse.json();
-  if (
-    !embeddingData ||
-    !embeddingData.data ||
-    !embeddingData.data[0] ||
-    !embeddingData.data[0].embedding
-  ) {
+
+  // Log embedding response for debugging
+  console.log("Embedding Response:", embeddingData);
+
+  // Validate the response
+  if (!embeddingData || !embeddingData.data || embeddingData.data.length === 0) {
     throw new Error("Invalid embedding response from OpenAI.");
   }
 
   const queryVector = embeddingData.data[0].embedding;
+
+  // Query Pinecone for context
   const pineconeResponse = await index.query({
     topK: 20,
     vector: queryVector,
     includeMetadata: true,
   });
 
-  if (!pineconeResponse || !pineconeResponse.matches) {
-    throw new Error("No matches found in Pinecone.");
+  // Log Pinecone response for debugging
+  console.log("Pinecone Response:", pineconeResponse);
+
+  if (!pineconeResponse || !pineconeResponse.matches || pineconeResponse.matches.length === 0) {
+    return ""; // No matches found
   }
 
   return pineconeResponse.matches
@@ -107,6 +113,10 @@ BOT RESPONSE:
       }),
     });
     const data = await apiResponse.json();
+
+    // Log the OpenAI response for debugging
+    console.log("OpenAI GPT-4 Response:", data);
+
     return data.choices[0]?.text?.trim() || "No response generated.";
   } else if (provider === "minimax") {
     const apiResponse = await fetch("https://api.minimaxi.chat/v1/text/chatcompletion_v2", {
@@ -133,6 +143,10 @@ BOT RESPONSE:
       }),
     });
     const data = await apiResponse.json();
+
+    // Log the MiniMax response for debugging
+    console.log("MiniMax Response:", data);
+
     return data.choices[0]?.message.content || "No response generated.";
   } else {
     throw new Error("Invalid provider selected.");
