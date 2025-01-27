@@ -37,20 +37,30 @@ async function initPinecone() {
 async function setupIndex(indexName) {
   try {
     console.log(`Ensuring Pinecone index '${indexName}' exists...`);
-    await pinecone.createIndex({
-      name: indexName,
-      dimension: 1536, // Adjust this based on your embedding model
-      metric: 'cosine',
-      suppressConflicts: true,
-      waitUntilReady: true,
-      spec: {
-        serverless: {
-          cloud: 'aws',
-          region: process.env.PINECONE_ENVIRONMENT,
-        },
-      },
-    });
 
+    // Check if the index already exists
+    const existingIndexes = await pinecone.listIndexes();
+    if (!existingIndexes.includes(indexName)) {
+      console.log(`Index '${indexName}' does not exist. Creating...`);
+      await pinecone.createIndex({
+        name: indexName,
+        dimension: 3072, // Match your embedding model dimensions (e.g., text-embedding-3-large)
+        metric: 'cosine',
+        suppressConflicts: true,
+        waitUntilReady: true,
+        spec: {
+          serverless: {
+            cloud: 'aws',
+            region: process.env.PINECONE_ENVIRONMENT || 'us-east-1', // Ensure environment variable is set
+          },
+        },
+      });
+      console.log(`Index '${indexName}' created successfully.`);
+    } else {
+      console.log(`Index '${indexName}' already exists.`);
+    }
+
+    // Connect to the index
     return pinecone.index(indexName);
   } catch (error) {
     console.error(`Error setting up index '${indexName}':`, error.message);
@@ -97,7 +107,7 @@ async function generateAndStoreEmbeddings(textChunks, metadata) {
   try {
     for (const [index, chunk] of textChunks.entries()) {
       const response = await openai.createEmbedding({
-        model: 'text-embedding-ada-002',
+        model: 'text-embedding-3-large',
         input: chunk,
       });
       const embedding = response.data.data[0].embedding;
@@ -179,7 +189,7 @@ app.post('/chat', async (req, res) => {
     // Generate embedding for user message
     const queryEmbedding = (
       await openai.createEmbedding({
-        model: 'text-embedding-ada-002',
+        model: 'text-embedding-3-large',
         input: message,
       })
     ).data.data[0].embedding;
