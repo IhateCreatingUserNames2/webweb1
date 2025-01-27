@@ -7,9 +7,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Get MiniMax, Pinecone, and OpenAI API keys from environment variables
-const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY; 
+const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY;
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // For OpenAI Embedding API
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // For OpenAI Embedding and Chat APIs
 const PINECONE_HOST = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Your Pinecone host
 const INDEX_NAME = "bluew";
 
@@ -52,7 +52,7 @@ async function fetchContext(message) {
     },
     body: JSON.stringify({
       input: message,
-      model: "text-embedding-3-large",
+      model: "text-embedding-3-large", // or "text-embedding-ada-002" if preferred
     }),
   });
 
@@ -78,8 +78,12 @@ async function fetchContext(message) {
   // Log Pinecone response for debugging
   console.log("Pinecone Response:", pineconeResponse);
 
-  if (!pineconeResponse || !pineconeResponse.matches || pineconeResponse.matches.length === 0) {
-    return ""; // No matches found
+  if (
+    !pineconeResponse ||
+    !pineconeResponse.matches ||
+    pineconeResponse.matches.length === 0
+  ) {
+    return ""; // No matches found; return empty context
   }
 
   return pineconeResponse.matches
@@ -90,16 +94,8 @@ async function fetchContext(message) {
 // Function to generate a response using the selected LLM
 async function generateResponse(message, context, provider) {
   if (provider === "openai") {
-    const prompt = `
-CONTEXT:
-${context}
-
-USER QUESTION:
-${message}
-
-BOT RESPONSE:
-`;
-    const apiResponse = await fetch("https://api.openai.com/v1/completions", {
+    // Using the Chat Completions endpoint with GPT-4
+    const chatResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -107,19 +103,28 @@ BOT RESPONSE:
       },
       body: JSON.stringify({
         model: "gpt-4",
-        prompt,
+        messages: [
+          {
+            role: "system",
+            content: `CONTEXT:\n${context}\n\nPlease use the above context to answer the user's question.`
+          },
+          {
+            role: "user",
+            content: message
+          }
+        ],
         max_tokens: 1500,
-        temperature: 0.7,
+        temperature: 0.7
       }),
     });
-    const data = await apiResponse.json();
 
-    // Log the OpenAI response for debugging
-    console.log("OpenAI GPT-4 Response:", data);
+    const openaiData = await chatResponse.json();
+    console.log("OpenAI GPT-4 Response:", openaiData);
 
-    return data.choices[0]?.text?.trim() || "No response generated.";
+    return openaiData.choices?.[0]?.message?.content?.trim() || "No response generated.";
   } else if (provider === "minimax") {
-    const apiResponse = await fetch("https://api.minimaxi.chat/v1/text/chatcompletion_v2", {
+    // Using the MiniMax API
+    const miniMaxResponse = await fetch("https://api.minimaxi.chat/v1/text/chatcompletion_v2", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -133,21 +138,20 @@ BOT RESPONSE:
         messages: [
           {
             role: "system",
-            content: `CONTEXT:\n${context}`,
+            content: `CONTEXT:\n${context}`
           },
           {
             role: "user",
-            content: message,
-          },
+            content: message
+          }
         ],
       }),
     });
-    const data = await apiResponse.json();
 
-    // Log the MiniMax response for debugging
-    console.log("MiniMax Response:", data);
+    const miniMaxData = await miniMaxResponse.json();
+    console.log("MiniMax Response:", miniMaxData);
 
-    return data.choices[0]?.message.content || "No response generated.";
+    return miniMaxData.choices?.[0]?.message?.content || "No response generated.";
   } else {
     throw new Error("Invalid provider selected.");
   }
