@@ -20,14 +20,22 @@ const openai = new OpenAIApi(configuration);
 
 // Configure Pinecone
 const pinecone = new PineconeClient();
+let pineconeIndex;
+
 (async () => {
-  await pinecone.init({
-    apiKey: process.env.PINECONE_API_KEY,
-    environment: 'us-east-1-aws', // Adjust if necessary
-  });
+  try {
+    await pinecone.init({
+      apiKey: process.env.PINECONE_API_KEY,
+      environment: 'us-east-1-aws', // Adjust if necessary
+    });
+    const indexName = 'bluew';
+    pineconeIndex = pinecone.Index(indexName);
+    console.log('Pinecone connected and index initialized.');
+  } catch (error) {
+    console.error('Error initializing Pinecone:', error.message);
+    process.exit(1); // Exit if Pinecone initialization fails
+  }
 })();
-const indexName = 'bluew';
-const pineconeIndex = pinecone.Index(indexName);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
