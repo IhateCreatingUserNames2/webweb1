@@ -143,6 +143,29 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+
+// Endpoint para deletar arquivo
+app.delete('/delete-file', (req, res) => {
+  const fileName = req.query.name;
+  if (!fileName || !docsTexts[fileName]) {
+    return res.status(400).json({ success: false, message: 'Arquivo não encontrado.' });
+  }
+
+  const filePath = path.join(__dirname, 'uploads', fileName);
+  fs.unlink(filePath, (err) => {
+    if (err) {
+      console.error('Erro ao deletar arquivo:', err);
+      return res.status(500).json({ success: false, message: 'Erro ao deletar arquivo.' });
+    }
+
+    delete docsTexts[fileName]; // Remove do armazenamento em memória
+    res.json({ success: true, message: 'Arquivo deletado com sucesso.' });
+  });
+});
+
+
+
+
 // Sobe servidor
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
