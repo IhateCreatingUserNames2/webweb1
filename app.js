@@ -19,14 +19,13 @@ const configuration = new Configuration({
 const openai = new OpenAIApi(configuration);
 
 // Configure Pinecone
+const pinecone = new PineconeClient();
 (async () => {
-  const pinecone = new PineconeClient();
   await pinecone.init({
-    apiKey: process.env.PINECONE_API_KEY, // Your Pinecone API key
-    environment: 'us-east-1-aws', // Adjust to your environment
+    apiKey: process.env.PINECONE_API_KEY,
+    environment: 'us-east-1-aws', // Adjust if necessary
   });
-
-module.exports = pinecone;  
+})();
 const indexName = 'bluew';
 const pineconeIndex = pinecone.Index(indexName);
 
@@ -40,10 +39,19 @@ app.use(fileUpload());
 
 // Helper: Chunk Text
 function chunkText(text, chunkSize = 500) {
+  const sentences = text.split(/(?<=\.)\s+/); // Split by sentences
   const chunks = [];
-  for (let i = 0; i < text.length; i += chunkSize) {
-    chunks.push(text.slice(i, i + chunkSize));
+  let currentChunk = '';
+
+  for (const sentence of sentences) {
+    if (currentChunk.length + sentence.length > chunkSize) {
+      chunks.push(currentChunk.trim());
+      currentChunk = sentence;
+    } else {
+      currentChunk += ` ${sentence}`;
+    }
   }
+  if (currentChunk) chunks.push(currentChunk.trim());
   return chunks;
 }
 
@@ -107,7 +115,7 @@ app.post('/upload', async (req, res) => {
         extractedText = fs.readFileSync(uploadPath, 'utf8');
       }
 
-      const textChunks = chunkText(extractedText, 500); // Chunk text
+      const textChunks = chunkText(extractedText, 1000); // Adjusted chunk size for better context
       const metadata = { id: file.name, type: 'file' };
 
       await generateAndStoreEmbeddings(textChunks, metadata);
