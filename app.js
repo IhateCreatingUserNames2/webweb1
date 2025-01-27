@@ -82,6 +82,7 @@ function chunkText(text, chunkSize = 500) {
 // Helper: Generate and store embeddings in Pinecone
 async function generateAndStoreEmbeddings(textChunks, metadata) {
   try {
+    const vectors = []; // Collect vectors to batch upserts
     for (const [index, chunk] of textChunks.entries()) {
       const response = await openai.createEmbedding({
         model: "text-embedding-3-large",
@@ -89,17 +90,21 @@ async function generateAndStoreEmbeddings(textChunks, metadata) {
       });
       const embedding = response.data.data[0].embedding;
 
-      await pineconeIndex.upsert({
-        vectors: [
-          {
-            id: `${metadata.id}-chunk-${index}`,
-            values: embedding,
-            metadata: { ...metadata, chunk },
-          },
-        ],
+      // Create vector object
+      vectors.push({
+        id: `${metadata.id}-chunk-${index}`,
+        values: embedding,
+        metadata: { ...metadata, chunk },
       });
     }
-    console.log(`Embeddings stored for ${metadata.id}`);
+
+    // Upsert vectors in a single batch
+    if (vectors.length > 0) {
+      await pineconeIndex.upsert({ vectors });
+      console.log(`Embeddings stored for ${metadata.id}`);
+    } else {
+      console.warn("No embeddings to store.");
+    }
   } catch (error) {
     console.error("Error storing embeddings:", error.message);
   }
@@ -165,13 +170,17 @@ app.post("/chat", async (req, res) => {
       })
     ).data.data[0].embedding;
 
-    const { matches } = await pineconeIndex.query({
+    const queryResponse = await pineconeIndex.query({
       topK: 5,
       vector: queryEmbedding,
       includeMetadata: true,
     });
 
-    const contexts = matches.map((match) => match.metadata.chunk).join("\n\n---\n\n");
+    if (!queryResponse.matches || queryResponse.matches.length === 0) {
+      return res.json({ reply: "No relevant context found." });
+    }
+
+    const contexts = queryResponse.matches.map((match) => match.metadata.chunk).join("\n\n---\n\n");
 
     const prompt = `
 CONTEXT:
@@ -190,8 +199,9 @@ BOT RESPONSE:
       temperature: 0.7,
     });
 
-    const botReply = response.data.choices[0].text.trim();
+    const botReply = response.data.choices[0]?.text?.trim() || "No response generated.";
 
+    // Store the conversation in Pinecone
     await generateAndStoreEmbeddings([message], { id: `user-${Date.now()}`, type: "conversation" });
     await generateAndStoreEmbeddings([botReply], { id: `bot-${Date.now()}`, type: "conversation" });
 
@@ -201,7 +211,6 @@ BOT RESPONSE:
     res.status(500).json({ error: "Error processing the message." });
   }
 });
-
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
