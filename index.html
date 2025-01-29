@@ -38,17 +38,15 @@
       padding: 8px;
       border-radius: 4px;
       line-height: 1.4;
-      white-space: pre-wrap; /* Mantém quebras de linha */
+      white-space: pre-wrap;
     }
 
-    /* Mensagens do usuário ficam alinhadas à direita */
     .message.user {
       text-align: right;
       color: #ffffff;
       background-color: #007bff;
     }
 
-    /* Mensagens do assistente ficam alinhadas à esquerda */
     .message.assistant {
       text-align: left;
       color: #333333;
@@ -63,34 +61,19 @@
       align-items: center;
     }
 
-    #model-selector {
-      margin-bottom: 10px;
+    select, input, button {
       width: 100%;
       max-width: 500px;
       padding: 10px;
       border: 1px solid #ddd;
       border-radius: 5px;
-      background-color: #fff;
-    }
-
-    #user-input {
-      flex: 1;
-      padding: 10px;
-      border: 1px solid #ddd;
-      border-radius: 5px;
-      outline: none;
       margin-bottom: 10px;
-      width: 100%;
     }
 
     button {
-      padding: 10px;
-      border: none;
       background-color: #007bff;
       color: #fff;
-      border-radius: 5px;
       cursor: pointer;
-      width: 100%;
     }
 
     button:hover {
@@ -103,67 +86,62 @@
   <div id="chat-container"></div>
   
   <div id="input-container">
-    <select id="model-selector">
-      <option value="openai">OpenAI GPT-4</option>
+    <label for="provider-selector">Escolha o Provedor:</label>
+    <select id="provider-selector" onchange="toggleModelSelector()">
+      <option value="openai">OpenAI</option>
       <option value="minimax">MiniMax</option>
     </select>
 
-    <input 
-      type="text"
-      id="user-input"
-      placeholder="Digite sua mensagem..."
-    />
+    <label for="model-selector">Escolha o Modelo (Apenas OpenAI):</label>
+    <select id="model-selector">
+      <option value="gpt-4o">GPT-4o</option>
+      <option value="chatgpt-4o-latest">ChatGPT-4o Latest</option>
+      <option value="o1">O1</option>
+    </select>
 
+    <input type="text" id="user-input" placeholder="Digite sua mensagem..." />
     <button onclick="sendMessage()">Enviar</button>
   </div>
 
   <script>
-    // Instancia do Markdown-it
     const md = window.markdownit();
-
     const chatContainer = document.getElementById('chat-container');
+    const modelSelector = document.getElementById('model-selector');
+    const providerSelector = document.getElementById('provider-selector');
 
-    // Adiciona uma mensagem ao container de chat
+    function toggleModelSelector() {
+      // Disable model selection if MiniMax is chosen
+      modelSelector.disabled = providerSelector.value === "minimax";
+    }
+
     function addMessage(content, role) {
       const messageElement = document.createElement('div');
       messageElement.className = `message ${role}`;
-
-      // Se a mensagem vier do assistente, renderiza o conteúdo como HTML de Markdown
-      if (role === 'assistant') {
-        messageElement.innerHTML = md.render(content);
-      } else {
-        // Usuário: mensagem em texto simples
-        messageElement.textContent = content;
-      }
-
+      messageElement.innerHTML = role === 'assistant' ? md.render(content) : content;
       chatContainer.appendChild(messageElement);
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
 
-    // Função para enviar a mensagem ao servidor
     async function sendMessage() {
       const userInput = document.getElementById('user-input');
-      const modelSelector = document.getElementById('model-selector');
       const message = userInput.value.trim();
-      const provider = modelSelector.value;
+      const provider = providerSelector.value;
+      const model = modelSelector.value; // Selected model
 
       if (!message) return;
 
-      // Exibe a mensagem do usuário no chat
       addMessage(message, 'user');
       userInput.value = '';
 
-      // Chama a rota /chatbot na sua API Node
       try {
         const response = await fetch('/chatbot', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, provider })
+          body: JSON.stringify({ message, provider, model })
         });
 
         const data = await response.json();
 
-        // Exibe a mensagem do assistente no chat
         if (data && data.reply) {
           addMessage(data.reply, 'assistant');
         } else {
