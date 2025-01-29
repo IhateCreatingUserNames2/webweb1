@@ -69,7 +69,7 @@ async function fetchContext(message) {
 
     // Filter results with high relevance score
     const relevantMatches = pineconeResponse.matches
-      .filter(match => match.score > 0.7) // Only results with similarity > 0.7
+      .filter(match => match.score > 0.3) // Only results with similarity > 0.7
       .map(match => match.metadata.text);
 
     console.log("📌 Contexto relevante encontrado:", relevantMatches);
