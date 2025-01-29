@@ -112,7 +112,7 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
         Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4",
+        model: "gpt-4o",
         messages: [
           { role: "system", content: systemMessage },
           ...chatHistory.slice(-6),
