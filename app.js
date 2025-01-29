@@ -13,6 +13,9 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // For OpenAI Embedding and C
 const PINECONE_HOST = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Pinecone host
 const INDEX_NAME = "bluew";
 
+// Allowed OpenAI models
+const ALLOWED_MODELS = ["gpt-4o", "chatgpt-4o-latest", "o1"];
+
 if (!PINECONE_API_KEY || !OPENAI_API_KEY || !MINI_MAX_API_KEY) {
   console.error("Error: API keys not set. Please configure them in the environment variables.");
   process.exit(1);
@@ -79,7 +82,7 @@ async function fetchContext(message) {
 }
 
 // Function to generate response using LLMs
-async function generateResponse(message, context, provider) {
+async function generateResponse(message, context, provider, model) {
   chatHistory.push({ role: "user", content: message });
 
   if (chatHistory.length > 6) {
@@ -96,7 +99,7 @@ Você fornece informações sobre produtos, incluindo inversores e geradores hí
 ### 📌 Informações Recuperadas:
 ${trimmedContext}  
 
-Se a resposta estiver no contexto acima, use **somente esses dados**. Se não houver informação relevante, diga: "Não encontrei informações sobre este item."
+Se a resposta estiver no contexto acima, use **somente esses dados**. Se não houver informação relevante, diga: "Não encontrei informações sobre este item." e pergunte se tem algo mais que possa ajudar. 
 
 ### 🔍 Histórico de Conversa:
 ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.content}` : `🤖 Mai: ${msg.content}`).join("\n")}
@@ -105,6 +108,12 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
 `.trim();
 
   if (provider === "openai") {
+    // Validate model
+    if (!ALLOWED_MODELS.includes(model)) {
+      console.warn(`⚠️ Invalid model "${model}" selected. Defaulting to gpt-4o.`);
+      model = "gpt-4o"; // Default model if invalid
+    }
+
     const chatResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -112,7 +121,7 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
         Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: model, // Use the selected model
         messages: [
           { role: "system", content: systemMessage },
           ...chatHistory.slice(-6),
@@ -139,18 +148,18 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
 
 // Chatbot endpoint with support for both MiniMax and OpenAI
 app.post("/chatbot", async (req, res) => {
-  const { message, provider } = req.body;
+  const { message, provider, model } = req.body;
 
   if (!message || !provider) {
-    return res.status(400).json({ error: "Message and provider are required." });
+    return res.status(400).json({ error: "Message, provider, and model are required." });
   }
 
   try {
     // Fetch relevant context from Pinecone
     const context = await fetchContext(message);
 
-    // Generate response using selected provider
-    const reply = await generateResponse(message, context, provider);
+    // Generate response using selected provider and model
+    const reply = await generateResponse(message, context, provider, model);
 
     res.json({ reply });
   } catch (error) {
