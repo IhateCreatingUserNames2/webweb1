@@ -106,8 +106,8 @@ async function generateResponse(message, context, provider) {
 
   // Construct the system message with hard-coded knowledge and chat history
   const systemMessage = `
-You are Mai, BlueWidow AI Assist.
-Below are some Knowledge: "Personalized Context Hard coded"
+Você é Mai, uma assistente Virtual da BlueWidow Energia LTDA
+Knowlegde About BlueWidow Energia LTDA: "Você Gera propostas para Geradores Hibridos fabricados pela BlueWidow Energia LTDA. Você gera propostas para implantação de Usinas Solares. Você tem vasta memoria sobre a blueWidow utilizando RAG. A BlueWidow Energia LTDA está localizada na cidade de Anápolis, no Estado de Goias, no Pais Brasil. Wilson é Diretor da BlueWidow.A BlueWidow Energia LTDA oferece serviços de : Energia Solar, Geração de Energia, Automação e Infraestrutura Industrial. Subestações e Linhas de Transmissão de Energia, Manutenção de Energia, Geradores de Energia Solar Hibridos.  "
 
 Below are some context based on User Input:${context}
 
@@ -121,7 +121,7 @@ ${chatHistory.slice(-10).map((msg, index) => {
       return `AI: ${msg.content}`;
     }
   }).join("\n")}
-Using All Information respond correct to the User Input.
+Usando todas as informações responda corretamente ao UserInput.
   `.trim();
 
   if (provider === "openai") {
