@@ -6,7 +6,7 @@ const fetch = require("node-fetch");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Get API keys from environment variables
+// API Keys
 const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY;
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -51,14 +51,13 @@ async function fetchContext(message) {
     });
 
     const embeddingData = await embeddingResponse.json();
-
     if (!embeddingData.data || embeddingData.data.length === 0) {
       throw new Error("🚨 No embedding data received from OpenAI.");
     }
 
     const queryVector = embeddingData.data[0].embedding;
 
-    // 🔍 Query Pinecone for similar items
+    // 🔍 Query Pinecone
     const pineconeResponse = await index.query({
       vector: queryVector,
       topK: 5,
@@ -67,12 +66,18 @@ async function fetchContext(message) {
 
     console.log("🔍 Pinecone Raw Response:", JSON.stringify(pineconeResponse, null, 2));
 
-    // 🏆 Lowered threshold to allow more results
-    const relevantMatches = pineconeResponse.matches
-      .filter(match => match.score > 0.5) // Adjusted from 0.7 to 0.5
+    // 🏆 **Lowered threshold to include more results**
+    let relevantMatches = pineconeResponse.matches
+      .filter(match => match.score > 0.4) // 🔥 Allow scores above 0.4
       .map(match => match.metadata.text);
 
-    console.log("📌 Relevant Context:", relevantMatches);
+    console.log("📌 Relevant Context Found:", relevantMatches);
+
+    // 🚀 **Dynamically adjust filtering**
+    if (relevantMatches.length === 0 && pineconeResponse.matches.length > 0) {
+      console.warn("⚠️ No high-score matches found, but some low-score results exist.");
+      relevantMatches = pineconeResponse.matches.map(match => match.metadata.text); // Fallback to all results
+    }
 
     return relevantMatches.length ? relevantMatches.join("\n") : null;
   } catch (error) {
@@ -86,16 +91,16 @@ async function generateResponse(message, context, provider, model) {
   chatHistory.push({ role: "user", content: message });
 
   if (chatHistory.length > 6) {
-    chatHistory.splice(0, 2); // Keep only last 3 user messages
+    chatHistory.splice(0, 2);
   }
 
   const MAX_CONTEXT_LENGTH = 2000;
   const trimmedContext = context ? context.substring(0, MAX_CONTEXT_LENGTH) : "";
 
   let systemMessage = `
-Você é Roberta, assistente Virtual da BlueWidow Energia LTDA.
+Você é Roberta, assistente virtual da BlueWidow Energia LTDA.
 Forneça informações sobre inversores e geradores híbridos.
-`;
+  `;
 
   // 🛠️ **Use Pinecone Context if Available**
   if (trimmedContext) {
@@ -103,13 +108,13 @@ Forneça informações sobre inversores e geradores híbridos.
 ### 📌 Informações Recuperadas:
 ${trimmedContext}
 
-Responda apenas com as informações acima. Se precisar, peça mais detalhes ao usuário.
+✅ Use estas informações como base para a resposta. Se necessário, peça mais detalhes ao usuário.
     `;
   } else {
-    // 🛠️ **Fallback: Use OpenAI General Knowledge**
+    // 🛠️ **Fallback: Allow OpenAI to answer freely**
     systemMessage += `
 🔍 Nenhuma informação específica foi encontrada no banco de dados.
-Use seu conhecimento geral para responder da melhor forma possível.
+💡 Use seu conhecimento geral para responder de forma útil ao usuário.
     `;
   }
 
@@ -169,7 +174,7 @@ app.post("/chatbot", async (req, res) => {
   try {
     let context = await fetchContext(message);
 
-    // 🛠️ **Fallback: Ensure AI Always Responds**
+    // 🛠️ **Ensure AI Always Responds**
     if (!context) {
       context = null;
     }
