@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY;
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // For OpenAI Embedding and Chat APIs
-const PINECONE_HOST = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Your Pinecone host
+const PINECONE_HOST = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Pinecone host
 const INDEX_NAME = "bluew";
 
 if (!PINECONE_API_KEY || !OPENAI_API_KEY || !MINI_MAX_API_KEY) {
@@ -38,6 +38,9 @@ app.use(express.static(__dirname)); // Serve static files like index.html
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/index.html");
 });
+
+// Initialize an array to store chat history
+const chatHistory = [];
 
 // Function to fetch context from Pinecone
 async function fetchContext(message) {
@@ -93,6 +96,34 @@ async function fetchContext(message) {
 
 // Function to generate a response using the selected LLM
 async function generateResponse(message, context, provider) {
+  // Add the current user message to the chat history
+  chatHistory.push({ role: "user", content: message });
+
+  // Keep only the last 5 interactions (10 messages, since each interaction has a user and AI message)
+  if (chatHistory.length > 10) {
+    chatHistory.splice(0, 2); // Remove the oldest two messages (one user and one AI)
+  }
+
+  // Construct the system message with hard-coded knowledge and chat history
+  const systemMessage = `
+You are Mai, BlueWidow AI Assist.
+Below are some Knowledge: "Personalized Context Hard coded"
+
+Below are some context based on User Input:${context}
+
+The UserInput: 
+
+Last 5 ChatHistory Between you and User:
+${chatHistory.slice(-10).map((msg, index) => {
+    if (msg.role === "user") {
+      return `User: ${msg.content}`;
+    } else if (msg.role === "assistant") {
+      return `AI: ${msg.content}`;
+    }
+  }).join("\n")}
+Using All Information respond correct to the User Input.
+  `.trim();
+
   if (provider === "openai") {
     // Using the Chat Completions endpoint with GPT-4
     const chatResponse = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -104,22 +135,22 @@ async function generateResponse(message, context, provider) {
       body: JSON.stringify({
         model: "gpt-4",
         messages: [
-          {
-            role: "system",
-            content: `CONTEXT:\n${context}\n\nPlease use the above context to answer the user's question.`
-          },
-          {
-            role: "user",
-            content: message
-          }
+          { role: "system", content: systemMessage },
+          ...chatHistory.slice(-10),
+          { role: "user", content: message }
         ],
-        max_tokens: 15000,
+        max_tokens: 1500,
         temperature: 0.7
       }),
     });
 
     const openaiData = await chatResponse.json();
     console.log("OpenAI GPT-4 Response:", openaiData);
+
+    // Add the AI's response to the chat history
+    if (openaiData.choices && openaiData.choices[0] && openaiData.choices[0].message) {
+      chatHistory.push({ role: "assistant", content: openaiData.choices[0].message.content.trim() });
+    }
 
     return openaiData.choices?.[0]?.message?.content?.trim() || "No response generated.";
   } else if (provider === "minimax") {
@@ -136,20 +167,20 @@ async function generateResponse(message, context, provider) {
         temperature: 0.8,
         top_p: 0.9,
         messages: [
-          {
-            role: "system",
-            content: `CONTEXT:\n${context}`
-          },
-          {
-            role: "user",
-            content: message
-          }
+          { role: "system", content: systemMessage },
+          ...chatHistory.slice(-10),
+          { role: "user", content: message }
         ],
       }),
     });
 
     const miniMaxData = await miniMaxResponse.json();
     console.log("MiniMax Response:", miniMaxData);
+
+    // Add the AI's response to the chat history
+    if (miniMaxData.choices && miniMaxData.choices[0] && miniMaxData.choices[0].message) {
+      chatHistory.push({ role: "assistant", content: miniMaxData.choices[0].message.content });
+    }
 
     return miniMaxData.choices?.[0]?.message?.content || "No response generated.";
   } else {
