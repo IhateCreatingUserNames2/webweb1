@@ -68,7 +68,7 @@ async function fetchContext(message) {
 
     // 🏆 **Lowered threshold to include more results**
     let relevantMatches = pineconeResponse.matches
-      .filter(match => match.score > 0.4) // 🔥 Allow scores above 0.4
+      .filter(match => match.score > 0.2) // 🔥 Allow scores above 0.4
       .map(match => match.metadata.text);
 
     console.log("📌 Relevant Context Found:", relevantMatches);
