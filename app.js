@@ -140,7 +140,7 @@ Usando todas as informações responda corretamente ao UserInput.
           ...chatHistory.slice(-10),
           { role: "user", content: message }
         ],
-        max_tokens: 1500,
+        max_tokens: 4500,
         temperature: 0.7
       }),
     });
