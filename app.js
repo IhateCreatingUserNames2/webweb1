@@ -45,7 +45,7 @@ async function fetchContext(message) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: "Bearer " + OPENAI_API_KEY,
       },
       body: JSON.stringify({ input: message, model: "text-embedding-3-large" }),
     });
@@ -58,15 +58,14 @@ async function fetchContext(message) {
 
     const queryVector = embeddingData.data[0].embedding;
 
-    // 🔍 Query Pinecone for similar items
+    // 🔍 Query Pinecone for similar items (WITHOUT FILTER)
     const pineconeResponse = await index.query({
       vector: queryVector,
       topK: 5,
-      includeMetadata: true,
-      filter: { type: { "$eq": "MONO L1" } } // 🎯 Querying only MONO L1 inverters
+      includeMetadata: true
     });
 
-    console.log("🔍 Pinecone Raw Response:", pineconeResponse);
+    console.log("🔍 Pinecone Raw Response:", JSON.stringify(pineconeResponse, null, 2));
 
     // 🏆 Filter relevant results based on score
     const relevantMatches = pineconeResponse.matches
@@ -77,7 +76,7 @@ async function fetchContext(message) {
 
     return relevantMatches.length ? relevantMatches.join("\n") : "Nenhuma informação relevante encontrada.";
   } catch (error) {
-    console.error("❌ Error in fetchContext:", error.message);
+    console.error(" Error in fetchContext:", error.message);
     return "Erro ao recuperar contexto.";
   }
 }
@@ -97,7 +96,7 @@ async function generateResponse(message, context, provider, model) {
 Você é Roberta, assistente Virtual da BlueWidow Energia LTDA.
 Forneça informações sobre inversores e geradores híbridos.
 
-### 📌 Informações Recuperadas:
+###  Informações Recuperadas:
 ${trimmedContext}  
 
 Se a resposta estiver no contexto acima, use **somente esses dados**. Caso contrário, diga: "Não encontrei informações sobre este item."
@@ -105,7 +104,7 @@ Se a resposta estiver no contexto acima, use **somente esses dados**. Caso contr
 ### 🔍 Histórico de Conversa:
 ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.content}` : `🤖 Roberta: ${msg.content}`).join("\n")}
 
-📢 **Responda de forma clara e formatada em Markdown.**
+ **Responda de forma clara e formatada em Markdown.**
 `.trim();
 
   if (provider === "openai") {
@@ -118,7 +117,7 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: "Bearer " + OPENAI_API_KEY,
       },
       body: JSON.stringify({
         model: model,
@@ -133,7 +132,7 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
     });
 
     const openaiData = await chatResponse.json();
-    console.log("💬 OpenAI Response:", openaiData);
+    console.log("💬 OpenAI Response:", JSON.stringify(openaiData, null, 2));
 
     if (openaiData.choices?.[0]?.message?.content) {
       chatHistory.push({ role: "assistant", content: openaiData.choices[0].message.content.trim() });
@@ -159,12 +158,12 @@ app.post("/chatbot", async (req, res) => {
     const reply = await generateResponse(message, context, provider, model);
     res.json({ reply });
   } catch (error) {
-    console.error("❌ Error in /chatbot:", error.message);
+    console.error(" Error in /chatbot:", error.message);
     res.status(500).json({ error: "An error occurred while processing your request." });
   }
 });
 
 // 🚀 **Start the server**
 app.listen(PORT, () => {
-  console.log(`✅ Server running at: http://localhost:${PORT}`);
+  console.log(` Server running at: http://localhost:${PORT}`);
 });
