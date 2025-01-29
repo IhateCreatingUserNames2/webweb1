@@ -122,6 +122,7 @@ ${chatHistory.slice(-10).map((msg, index) => {
     }
   }).join("\n")}
 Usando todas as informações responda corretamente ao UserInput.
+**Responda utilizando Markdown formatado corretamente.**
   `.trim();
 
   if (provider === "openai") {
