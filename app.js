@@ -9,8 +9,8 @@ const PORT = process.env.PORT || 3000;
 // Get API keys from environment variables
 const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY;
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY; 
-const PINECONE_HOST = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io"; 
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const PINECONE_HOST = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io";
 const INDEX_NAME = "bluew";
 
 // Allowed OpenAI models
@@ -25,7 +25,7 @@ if (!PINECONE_API_KEY || !OPENAI_API_KEY || !MINI_MAX_API_KEY) {
 const pinecone = new Pinecone({ apiKey: PINECONE_API_KEY });
 
 app.use(bodyParser.json());
-app.use(express.static(__dirname)); 
+app.use(express.static(__dirname));
 
 // Serve index.html
 app.get("/", (req, res) => {
@@ -45,7 +45,7 @@ async function fetchContext(message) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer " + OPENAI_API_KEY,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({ input: message, model: "text-embedding-3-large" }),
     });
@@ -58,26 +58,26 @@ async function fetchContext(message) {
 
     const queryVector = embeddingData.data[0].embedding;
 
-    // 🔍 Query Pinecone for similar items (WITHOUT FILTER)
+    // 🔍 Query Pinecone for similar items
     const pineconeResponse = await index.query({
       vector: queryVector,
       topK: 5,
-      includeMetadata: true
+      includeMetadata: true,
     });
 
     console.log("🔍 Pinecone Raw Response:", JSON.stringify(pineconeResponse, null, 2));
 
-    // 🏆 Filter relevant results based on score
+    // 🏆 Lowered threshold to allow more results
     const relevantMatches = pineconeResponse.matches
-      .filter(match => match.score > 0.7) // 🔥 Keep only high similarity scores
+      .filter(match => match.score > 0.5) // Adjusted from 0.7 to 0.5
       .map(match => match.metadata.text);
 
     console.log("📌 Relevant Context:", relevantMatches);
 
-    return relevantMatches.length ? relevantMatches.join("\n") : "Nenhuma informação relevante encontrada.";
+    return relevantMatches.length ? relevantMatches.join("\n") : null;
   } catch (error) {
-    console.error(" Error in fetchContext:", error.message);
-    return "Erro ao recuperar contexto.";
+    console.error("❌ Error in fetchContext:", error.message);
+    return null;
   }
 }
 
@@ -90,44 +90,57 @@ async function generateResponse(message, context, provider, model) {
   }
 
   const MAX_CONTEXT_LENGTH = 2000;
-  const trimmedContext = context.length > MAX_CONTEXT_LENGTH ? context.substring(0, MAX_CONTEXT_LENGTH) : context;
+  const trimmedContext = context ? context.substring(0, MAX_CONTEXT_LENGTH) : "";
 
-  const systemMessage = `
+  let systemMessage = `
 Você é Roberta, assistente Virtual da BlueWidow Energia LTDA.
 Forneça informações sobre inversores e geradores híbridos.
+`;
 
-###  Informações Recuperadas:
-${trimmedContext}  
+  // 🛠️ **Use Pinecone Context if Available**
+  if (trimmedContext) {
+    systemMessage += `
+### 📌 Informações Recuperadas:
+${trimmedContext}
 
-Se a resposta estiver no contexto acima, use **somente esses dados**. Caso contrário, diga: "Não encontrei informações sobre este item."
+Responda apenas com as informações acima. Se precisar, peça mais detalhes ao usuário.
+    `;
+  } else {
+    // 🛠️ **Fallback: Use OpenAI General Knowledge**
+    systemMessage += `
+🔍 Nenhuma informação específica foi encontrada no banco de dados.
+Use seu conhecimento geral para responder da melhor forma possível.
+    `;
+  }
 
+  systemMessage += `
 ### 🔍 Histórico de Conversa:
 ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.content}` : `🤖 Roberta: ${msg.content}`).join("\n")}
 
- **Responda de forma clara e formatada em Markdown.**
+📢 **Responda de forma clara e formatada em Markdown.**
 `.trim();
 
   if (provider === "openai") {
     if (!ALLOWED_MODELS.includes(model)) {
       console.warn(`⚠️ Invalid model "${model}" selected. Defaulting to gpt-4o.`);
-      model = "gpt-4o"; 
+      model = "gpt-4o";
     }
 
     const chatResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer " + OPENAI_API_KEY,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
         model: model,
         messages: [
           { role: "system", content: systemMessage },
           ...chatHistory.slice(-6),
-          { role: "user", content: message }
+          { role: "user", content: message },
         ],
         max_tokens: 1500,
-        temperature: 0.7
+        temperature: 0.7,
       }),
     });
 
@@ -154,16 +167,22 @@ app.post("/chatbot", async (req, res) => {
   }
 
   try {
-    const context = await fetchContext(message);
+    let context = await fetchContext(message);
+
+    // 🛠️ **Fallback: Ensure AI Always Responds**
+    if (!context) {
+      context = null;
+    }
+
     const reply = await generateResponse(message, context, provider, model);
     res.json({ reply });
   } catch (error) {
-    console.error(" Error in /chatbot:", error.message);
+    console.error("❌ Error in /chatbot:", error.message);
     res.status(500).json({ error: "An error occurred while processing your request." });
   }
 });
 
 // 🚀 **Start the server**
 app.listen(PORT, () => {
-  console.log(` Server running at: http://localhost:${PORT}`);
+  console.log(`🚀 Server running at: http://localhost:${PORT}`);
 });
