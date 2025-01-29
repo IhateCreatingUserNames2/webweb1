@@ -73,7 +73,7 @@ async function fetchContext(message) {
 
   // Query Pinecone for context
   const pineconeResponse = await index.query({
-    topK: 35,
+    topK: 10,
     vector: queryVector,
     includeMetadata: true,
   });
