@@ -355,7 +355,7 @@ ${chatHistory
   } else {
     throw new Error("Invalid provider selected.");
   }
-});
+);
 
 /**
  * 📨 Chatbot API Endpoint
