@@ -33,8 +33,8 @@ if (!PINECONE_API_KEY || !OPENAI_API_KEY || !MINI_MAX_API_KEY) {
 }
 
 // Initialize Pinecone clients
-const pineconeBlueW = new PineconeClient();
-const pineconeBlueW2 = new PineconeClient();
+const pineconeBlueW = new Pinecone({ apiKey: PINECONE_API_KEY });
+const pineconeBlueW2 = new Pinecone({ apiKey: PINECONE_API_KEY });
 
 (async () => {
   try {
