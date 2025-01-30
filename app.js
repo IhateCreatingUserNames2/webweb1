@@ -1,6 +1,6 @@
 const express = require("express");
 const bodyParser = require("body-parser");
-const { PineconeClient } = require("@pinecone-database/pinecone");
+const { Pinecone } = require("@pinecone-database/pinecone");
 const fetch = require("node-fetch");
 
 const app = express();
@@ -10,7 +10,6 @@ const PORT = process.env.PORT || 3000;
 const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY;
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const PINECONE_ENVIRONMENT = process.env.PINECONE_ENVIRONMENT || "us-east-1"; // Example environment
 const PINECONE_HOST_BLUEW = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Host for bluew index
 const PINECONE_HOST_BLUEW2 = "https://bluew2-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Host for bluew2 index
 const INDEX_NAME_BLUEW = "bluew"; // Index for dense vector search
@@ -25,20 +24,8 @@ if (!PINECONE_API_KEY || !OPENAI_API_KEY || !MINI_MAX_API_KEY) {
 }
 
 // Initialize Pinecone clients
-const pineconeBlueW = new PineconeClient();
-const pineconeBlueW2 = new PineconeClient();
-
-(async () => {
-  await pineconeBlueW.init({
-    apiKey: PINECONE_API_KEY,
-    environment: PINECONE_ENVIRONMENT,
-  });
-
-  await pineconeBlueW2.init({
-    apiKey: PINECONE_API_KEY,
-    environment: PINECONE_ENVIRONMENT,
-  });
-})();
+const pineconeBlueW = new Pinecone({ apiKey: PINECONE_API_KEY });
+const pineconeBlueW2 = new Pinecone({ apiKey: PINECONE_API_KEY });
 
 app.use(bodyParser.json());
 app.use(express.static(__dirname));
@@ -55,8 +42,8 @@ const chatHistory = [];
 async function fetchContext(message) {
   try {
     // Initialize indexes
-    const indexBlueW = pineconeBlueW.Index(INDEX_NAME_BLUEW);
-    const indexBlueW2 = pineconeBlueW2.Index(INDEX_NAME_BLUEW2);
+    const indexBlueW = pineconeBlueW.index(INDEX_NAME_BLUEW, PINECONE_HOST_BLUEW);
+    const indexBlueW2 = pineconeBlueW2.index(INDEX_NAME_BLUEW2, PINECONE_HOST_BLUEW2);
 
     // 🧠 Get query embedding from OpenAI
     const embeddingResponse = await fetch("https://api.openai.com/v1/embeddings", {
@@ -65,7 +52,7 @@ async function fetchContext(message) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
-      body: JSON.stringify({ input: message, model: "text-embedding-ada-002" }),
+      body: JSON.stringify({ input: message, model: "text-embedding-3-large" }),
     });
 
     const embeddingData = await embeddingResponse.json();
@@ -88,7 +75,7 @@ async function fetchContext(message) {
     // 🔍 Query BlueW2 (Hybrid Search)
     // Note: Pinecone's Node.js client currently supports only dense vectors for querying.
     // To perform hybrid search, you need to use the REST API directly.
-    const pineconeResponseBlueW2 = await fetch(PINECONE_HOST_BLUEW2 + "/query", {
+    const pineconeResponseBlueW2 = await fetch("https://bluew2-xek6roj.svc.aped-4627-b74a.pinecone.io/query", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -164,7 +151,7 @@ Forneça informações sobre inversores e geradores híbridos.
 ### 📌 Informações Recuperadas:
 ${trimmedContext}
 
-✅ Use estas informações como base para a resposta. Se necessário, peça mais detalhes ao usuário.
+✅ Use these information as the basis for the response. If necessary, ask for more details from the user.
     `;
   } else {
     // 🛠️ **Fallback: Allow OpenAI to answer freely**
@@ -178,12 +165,12 @@ ${trimmedContext}
 ### 🔍 Histórico de Conversa:
 ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.content}` : `🤖 Roberta: ${msg.content}`).join("\n")}
 
-📢 **Responda de forma clara e formatada em Markdown.**
+📢 **Responda de forma clara e formatada em Markdown.`
 `.trim();
 
   if (provider === "openai") {
     if (!ALLOWED_MODELS.includes(model)) {
-      console.warn(`⚠️ Modelo inválido "${model}" selecionado. Usando gpt-4o por padrão.`);
+      console.warn(`⚠️ Invalid model "${model}" selected. Defaulting to gpt-4o.`);
       model = "gpt-4o";
     }
 
@@ -213,9 +200,9 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
       return openaiData.choices[0].message.content.trim();
     }
 
-    return "Nenhuma resposta gerada.";
+    return "No response generated.";
   } else {
-    throw new Error("Provedor inválido selecionado.");
+    throw new Error("Invalid provider selected.");
   }
 }
 
@@ -224,7 +211,7 @@ app.post("/chatbot", async (req, res) => {
   const { message, provider, model } = req.body;
 
   if (!message || !provider) {
-    return res.status(400).json({ error: "Mensagem, provedor e modelo são obrigatórios." });
+    return res.status(400).json({ error: "Message, provider, and model are required." });
   }
 
   try {
@@ -239,11 +226,11 @@ app.post("/chatbot", async (req, res) => {
     res.json({ reply });
   } catch (error) {
     console.error("❌ Error in /chatbot:", error.message);
-    res.status(500).json({ error: "Ocorreu um erro ao processar sua solicitação." });
+    res.status(500).json({ error: "An error occurred while processing your request." });
   }
 });
 
 // 🚀 **Start the server**
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando em: http://localhost:${PORT}`);
+  console.log(`🚀 Server running at: http://localhost:${PORT}`);
 });
