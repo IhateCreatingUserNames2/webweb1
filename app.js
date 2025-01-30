@@ -1,6 +1,6 @@
 const express = require("express");
 const bodyParser = require("body-parser");
-const { PineconeClient } = require("@pinecone-database/pinecone");
+const { Pinecone } = require("@pinecone-database/pinecone");
 const fetch = require("node-fetch");
 const fs = require("fs");
 const path = require("path");
@@ -40,12 +40,10 @@ const pineconeBlueW2 = new Pinecone({ apiKey: PINECONE_API_KEY });
   try {
     // Initialize Pinecone Clients
     await pineconeBlueW.init({
-      apiKey: PINECONE_API_KEY,
       environment: PINECONE_ENVIRONMENT,
     });
 
     await pineconeBlueW2.init({
-      apiKey: PINECONE_API_KEY,
       environment: PINECONE_ENVIRONMENT,
     });
 
@@ -353,11 +351,11 @@ ${chatHistory
       return openaiData.choices[0].message.content.trim();
     }
 
-    return "Nenhuma resposta gerada.";
+    return "No response generated.";
   } else {
-    throw new Error("Provedor inválido selecionado.");
+    throw new Error("Invalid provider selected.");
   }
-}
+});
 
 /**
  * 📨 Chatbot API Endpoint
@@ -380,3 +378,10 @@ app.post("/chatbot", async (req, res) => {
     res.status(500).json({ error: "Ocorreu um erro ao processar sua solicitação." });
   }
 });
+
+
+// 🚀 **Start the server**
+app.listen(PORT, () => {
+  console.log(`🚀 Server running at: http://localhost:${PORT}`);
+});
+
