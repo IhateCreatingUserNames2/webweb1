@@ -14,7 +14,10 @@
     "pdf-parse": "^1.1.1",
     "openai": "^3.2.1",
     "fs-extra": "^11.1.1",
-    "@pinecone-database/pinecone": "^2.1.1"
+    "@pinecone-database/pinecone": "^2.1.1",
+    "body-parser": "^1.20.2",
+    "csv-parser": "^3.0.0",
+    "node-fetch": "^2.6.7"
   },
   "engines": {
     "node": ">=14.0.0"
