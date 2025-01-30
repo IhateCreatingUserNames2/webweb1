@@ -1,6 +1,6 @@
 const express = require("express");
 const bodyParser = require("body-parser");
-const { Pinecone } = require("@pinecone-database/pinecone"); // Changed from PineconeClient to Pinecone
+const { PineconeClient } = require("@pinecone-database/pinecone"); // Correct import
 const fetch = require("node-fetch");
 const fs = require("fs");
 const path = require("path");
@@ -33,8 +33,8 @@ if (!PINECONE_API_KEY || !OPENAI_API_KEY || !MINI_MAX_API_KEY) {
 }
 
 // Initialize Pinecone clients
-const pineconeBlueW = new Pinecone();
-const pineconeBlueW2 = new Pinecone();
+const pineconeBlueW = new PineconeClient();
+const pineconeBlueW2 = new PineconeClient();
 
 (async () => {
   try {
