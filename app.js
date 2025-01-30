@@ -65,7 +65,7 @@ async function fetchContext(message) {
     // 🔍 Query BlueW (Dense Vector Search)
     const pineconeResponseBlueW = await indexBlueW.query({
       vector: queryVector,
-      topK: 5, // Adjust based on your needs
+      topK: 15, // Adjust based on your needs
       includeMetadata: true,
       includeValues: false, // Set to false if you don't need the vector values
     });
@@ -102,7 +102,7 @@ async function fetchContext(message) {
 
     // 🏆 **Filter matches based on score**
     let relevantMatchesBlueW = pineconeResponseBlueW.matches
-      .filter(match => match.score > 0.1) // Example threshold for BlueW
+      .filter(match => match.score > 0.4) // Example threshold for BlueW
       .map(match => match.metadata.text);
 
     console.log("📌 Relevant Context Found (BlueW):", relevantMatchesBlueW);
