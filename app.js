@@ -65,16 +65,14 @@ async function fetchContext(message) {
     // 🔍 Query BlueW (Dense Vector Search)
     const pineconeResponseBlueW = await indexBlueW.query({
       vector: queryVector,
-      topK: 15, // Adjust based on your needs
+      topK: 5, // Adjust based on your needs
       includeMetadata: true,
       includeValues: false, // Set to false if you don't need the vector values
     });
 
     console.log("🔍 Pinecone BlueW Raw Response:", JSON.stringify(pineconeResponseBlueW, null, 2));
 
-    // 🔍 Query BlueW2 (Hybrid Search)
-    // Note: Pinecone's Node.js client currently supports only dense vectors for querying.
-    // To perform hybrid search, use the REST API directly.
+    // 🔍 Query BlueW2 (Hybrid Search) using REST API
     const pineconeResponseBlueW2 = await fetch("https://bluew2-xek6roj.svc.aped-4627-b74a.pinecone.io/query", {
       method: "POST",
       headers: {
@@ -87,12 +85,8 @@ async function fetchContext(message) {
         includeMetadata: true,
         includeValues: false,
         sparseVector: {
-          // Define your sparse vector here if needed
-          // For example:
-          // indices: [10, 45, 16],
-          // values: [0.5, 0.5, 0.2]
-          indices: [], // Replace with actual indices if available
-          values: [] // Replace with actual values if available
+          indices: [10, 45, 16], // Example sparse indices
+          values: [0.5, 0.5, 0.2] // Example sparse values
         }
       }),
     });
