@@ -1,63 +1,52 @@
 const express = require("express");
 const bodyParser = require("body-parser");
-const { Pinecone } = require("@pinecone-database/pinecone");
+const { PineconeClient } = require("@pinecone-database/pinecone");
 const fetch = require("node-fetch");
 const fs = require("fs");
 const path = require("path");
 const csvParser = require("csv-parser");
+const nltk = require("nltk");
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+// ✅ Ensure NLTK tokenizer is available
+nltk.download("punkt", quiet = true);
 
-// API Keys
-const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY;
-const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
+// 🚀 **Set OpenAI API Key (Dense Embeddings)**
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// Pinecone Configuration
-const PINECONE_ENVIRONMENT = process.env.PINECONE_ENVIRONMENT || "us-east-1"; // Set to 'us-east-1' as per your setup
-const PINECONE_HOST_BLUEW = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Host for BlueW index
-const PINECONE_HOST_BLUEW2 = "https://bluew2-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Host for BlueW2 index
-const INDEX_NAME_BLUEW = "bluew"; // Index for dense vector search
-const INDEX_NAME_BLUEW2 = "bluew2"; // Index for hybrid (sparse-dense) search
+// 🚀 **Set Pinecone API Key and Environment**
+const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
+const PINECONE_ENVIRONMENT = process.env.PINECONE_ENVIRONMENT || "us-east-1"; // Default to 'us-east-1' if not set
 
+// 📁 **Constants for File-Based Context**
 const UPLOADS_DIR = path.join(__dirname, "uploads"); // Directory for uploaded files
 
-// Allowed OpenAI models
-const ALLOWED_MODELS = ["gpt-4o", "chatgpt-4o-latest", "o1"];
-
-// Check for required API keys
-if (!PINECONE_API_KEY || !OPENAI_API_KEY || !MINI_MAX_API_KEY) {
-  console.error("❌ Missing API keys. Set them in the environment variables.");
-  process.exit(1);
-}
-
-// Initialize Pinecone clients
-const pineconeBlueW = new Pinecone({ apiKey: PINECONE_API_KEY });
-const pineconeBlueW2 = new Pinecone({ apiKey: PINECONE_API_KEY });
+// 🚀 **Initialize Pinecone Clients**
+const pineconeBlueW = new PineconeClient();
+const pineconeBlueW2 = new PineconeClient();
 
 (async () => {
   try {
     // Initialize Pinecone Clients
     await pineconeBlueW.init({
+      apiKey: PINECONE_API_KEY,
       environment: PINECONE_ENVIRONMENT,
     });
 
     await pineconeBlueW2.init({
+      apiKey: PINECONE_API_KEY,
       environment: PINECONE_ENVIRONMENT,
     });
 
     console.log("✅ Pinecone clients initialized successfully.");
-
-    // Start the server after Pinecone initialization
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running at: http://localhost:${PORT}`);
-    });
   } catch (error) {
     console.error("❌ Error initializing Pinecone clients:", error.message);
     process.exit(1);
   }
 })();
+
+// 🚀 **Start the Server After Pinecone Initialization**
+const PORT = process.env.PORT || 3000;
+app = express();
 
 // Middleware
 app.use(bodyParser.json());
@@ -175,45 +164,28 @@ async function fetchContext(message) {
     console.log("🔍 Pinecone BlueW Raw Response:", JSON.stringify(pineconeResponseBlueW, null, 2));
 
     // 🔍 Query BlueW2 (Hybrid Search)
-    // If you have a method to generate a valid sparse vector, implement it here.
-    // For demonstration, we'll assume no sparse vector is provided.
-    let pineconeResponseBlueW2;
-    let hybridData = null;
+    const sparseVector = generateSparseVector(message);
 
-    // Example: Only perform hybrid search if you have a valid sparse vector
-    // Replace the following with your actual logic to create a sparse vector
-    const hasSparseVector = false; // Set to true if you have a sparse vector
+    if (sparseVector.indices.length > 0 && sparseVector.values.length > 0) {
+      const pineconeResponseBlueW2 = await fetch(`${PINECONE_HOST_BLUEW2}/query`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Api-Key": PINECONE_API_KEY,
+        },
+        body: JSON.stringify({
+          vector: queryVector,
+          topK: 5, // Adjust based on your needs
+          includeMetadata: true,
+          includeValues: false,
+          sparseVector: sparseVector,
+        }),
+      });
 
-    if (hasSparseVector) {
-      const sparseVector = {
-        indices: [10, 45, 16], // Example sparse indices
-        values: [0.5, 0.5, 0.2], // Example sparse values
-      };
-
-      // Validate sparse vector
-      if (sparseVector.indices.length && sparseVector.values.length) {
-        pineconeResponseBlueW2 = await fetch(`${PINECONE_HOST_BLUEW2}/query`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Api-Key": PINECONE_API_KEY,
-          },
-          body: JSON.stringify({
-            vector: queryVector,
-            topK: 5, // Adjust based on your needs
-            includeMetadata: true,
-            includeValues: false,
-            sparseVector: sparseVector,
-          }),
-        });
-
-        hybridData = await pineconeResponseBlueW2.json();
-        console.log("🔍 Pinecone BlueW2 Raw Response (Hybrid Search):", JSON.stringify(hybridData, null, 2));
-      } else {
-        console.warn("⚠️ Sparse vector is invalid. Skipping hybrid search.");
-      }
+      const hybridData = await pineconeResponseBlueW2.json();
+      console.log("🔍 Pinecone BlueW2 Raw Response (Hybrid Search):", JSON.stringify(hybridData, null, 2));
     } else {
-      console.log("ℹ️ No sparse vector provided. Skipping hybrid search.");
+      console.warn("⚠️ Sparse vector is invalid or empty. Skipping hybrid search.");
     }
 
     // 🏆 **Filter matches based on score**
@@ -308,9 +280,7 @@ ${trimmedContext}
 ### 🔍 Histórico de Conversa:
 ${chatHistory
     .slice(-6)
-    .map((msg) =>
-      msg.role === "user" ? `👤 Usuário: ${msg.content}` : `🤖 Roberta: ${msg.content}`
-    )
+    .map((msg) => (msg.role === "user" ? `👤 Usuário: ${msg.content}` : `🤖 Roberta: ${msg.content}`))
     .join("\n")}
 
 📢 **Responda de forma clara e formatada em Markdown.**
@@ -344,18 +314,15 @@ ${chatHistory
     console.log("💬 OpenAI Response:", JSON.stringify(openaiData, null, 2));
 
     if (openaiData.choices?.[0]?.message?.content) {
-      chatHistory.push({
-        role: "assistant",
-        content: openaiData.choices[0].message.content.trim(),
-      });
+      chatHistory.push({ role: "assistant", content: openaiData.choices[0].message.content.trim() });
       return openaiData.choices[0].message.content.trim();
     }
 
-    return "No response generated.";
+    return "Nenhuma resposta gerada.";
   } else {
-    throw new Error("Invalid provider selected.");
+    throw new Error("Provedor inválido selecionado.");
   }
-);
+}
 
 /**
  * 📨 Chatbot API Endpoint
@@ -379,9 +346,7 @@ app.post("/chatbot", async (req, res) => {
   }
 });
 
-
-// 🚀 **Start the server**
+// 🚀 **Start the Server**
 app.listen(PORT, () => {
   console.log(`🚀 Server running at: http://localhost:${PORT}`);
 });
-
