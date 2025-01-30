@@ -380,9 +380,3 @@ app.post("/chatbot", async (req, res) => {
     res.status(500).json({ error: "Ocorreu um erro ao processar sua solicitação." });
   }
 });
-
-
-// 🚀 **Start the server**
-app.listen(PORT, () => {
-  console.log(`🚀 Server running at: http://localhost:${PORT}`);
-});
