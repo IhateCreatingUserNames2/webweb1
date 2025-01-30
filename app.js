@@ -10,8 +10,10 @@ const PORT = process.env.PORT || 3000;
 const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY;
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const PINECONE_HOST = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io";
-const INDEX_NAME = "bluew";
+const PINECONE_HOST_BLUEW = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Host for bluew index
+const PINECONE_HOST_BLUEW2 = "https://bluew2-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Host for bluew2 index
+const INDEX_NAME_BLUEW = "bluew"; // Index for dense vector search
+const INDEX_NAME_BLUEW2 = "bluew2"; // Index for hybrid (sparse-dense) search
 
 // Allowed OpenAI models
 const ALLOWED_MODELS = ["gpt-4o", "chatgpt-4o-latest", "o1"];
@@ -21,8 +23,9 @@ if (!PINECONE_API_KEY || !OPENAI_API_KEY || !MINI_MAX_API_KEY) {
   process.exit(1);
 }
 
-// Initialize Pinecone client
-const pinecone = new Pinecone({ apiKey: PINECONE_API_KEY });
+// Initialize Pinecone clients
+const pineconeBlueW = new Pinecone({ apiKey: PINECONE_API_KEY });
+const pineconeBlueW2 = new Pinecone({ apiKey: PINECONE_API_KEY });
 
 app.use(bodyParser.json());
 app.use(express.static(__dirname));
@@ -35,11 +38,12 @@ app.get("/", (req, res) => {
 // Chat history storage
 const chatHistory = [];
 
-// 🛠️ **Fetch relevant context from Pinecone**
-// 🛠️ **Fetch relevant context from Pinecone**
+// 🛠️ **Fetch relevant context from both Pinecone indexes**
 async function fetchContext(message) {
   try {
-    const index = pinecone.index(INDEX_NAME, PINECONE_HOST);
+    // Initialize indexes
+    const indexBlueW = pineconeBlueW.index(INDEX_NAME_BLUEW, PINECONE_HOST_BLUEW);
+    const indexBlueW2 = pineconeBlueW2.index(INDEX_NAME_BLUEW2, PINECONE_HOST_BLUEW2);
 
     // 🧠 Get query embedding from OpenAI
     const embeddingResponse = await fetch("https://api.openai.com/v1/embeddings", {
@@ -58,36 +62,72 @@ async function fetchContext(message) {
 
     const queryVector = embeddingData.data[0].embedding;
 
-    // 🔍 Query Pinecone
-    const pineconeResponse = await index.query({
+    // 🔍 Query BlueW (Dense Vector Search)
+    const pineconeResponseBlueW = await indexBlueW.query({
       vector: queryVector,
-      topK: 15,
+      topK: 5, // Adjust based on your needs
       includeMetadata: true,
-      includeValues: true, // ✅ Ensure both Dense & Sparse embeddings are retrieved
+      includeValues: false, // Set to false if you don't need the vector values
     });
 
-    console.log("🔍 Pinecone Raw Response:", JSON.stringify(pineconeResponse, null, 2));
+    console.log("🔍 Pinecone BlueW Raw Response:", JSON.stringify(pineconeResponseBlueW, null, 2));
 
-    // 🏆 **Lowered threshold to include more results**
-    let relevantMatches = pineconeResponse.matches
-      .filter(match => match.score > 0.05) // 🔥 Allow scores above 0.4
+    // 🔍 Query BlueW2 (Hybrid Search)
+    // Note: Pinecone's Node.js client currently supports only dense vectors for querying.
+    // To perform hybrid search, you need to use the REST API directly.
+    const pineconeResponseBlueW2 = await fetch("https://bluew2-xek6roj.svc.aped-4627-b74a.pinecone.io/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Api-Key": PINECONE_API_KEY,
+      },
+      body: JSON.stringify({
+        vector: queryVector,
+        topK: 5, // Adjust based on your needs
+        includeMetadata: true,
+        includeValues: false,
+        sparseVector: {
+          // Define your sparse vector here if needed
+          // For example:
+          // indices: [10, 45, 16],
+          // values: [0.5, 0.5, 0.2]
+          indices: [], // Replace with actual indices if available
+          values: [] // Replace with actual values if available
+        }
+      }),
+    });
+
+    const hybridData = await pineconeResponseBlueW2.json();
+    console.log("🔍 Pinecone BlueW2 Raw Response (Hybrid Search):", JSON.stringify(hybridData, null, 2));
+
+    // 🏆 **Filter matches based on score**
+    let relevantMatchesBlueW = pineconeResponseBlueW.matches
+      .filter(match => match.score > 0.1) // Example threshold for BlueW
       .map(match => match.metadata.text);
 
-    console.log("📌 Relevant Context Found:", relevantMatches);
+    console.log("📌 Relevant Context Found (BlueW):", relevantMatchesBlueW);
 
-    // 🚀 **Dynamically adjust filtering**
-    if (relevantMatches.length === 0 && pineconeResponse.matches.length > 0) {
-      console.warn("⚠️ No high-score matches found, but some low-score results exist.");
-      relevantMatches = pineconeResponse.matches.map(match => match.metadata.text); // Fallback to all results
-    }
+    // Handle hybrid search results
+    let relevantMatchesBlueW2 = hybridData.matches
+      .filter(match => match.score > 0.1) // Example threshold for BlueW2
+      .map(match => match.metadata.text);
 
-    return relevantMatches.length ? relevantMatches.join("\n") : null;
+    console.log("📌 Relevant Context Found (BlueW2 - Hybrid):", relevantMatchesBlueW2);
+
+    // 🚀 **Combine contexts with separators**
+    const combinedContext = [
+      "### 📌 Dense Vector Context (BlueW):",
+      relevantMatchesBlueW.length ? relevantMatchesBlueW.join("\n") : "No relevant context found.",
+      "### 📌 Hybrid Search Context (BlueW2):",
+      relevantMatchesBlueW2.length ? relevantMatchesBlueW2.join("\n") : "No relevant hybrid context found."
+    ].join("\n\n");
+
+    return combinedContext.length ? combinedContext : null;
   } catch (error) {
     console.error("❌ Error in fetchContext:", error.message);
     return null;
   }
 }
-
 
 // 🤖 **Generate response using OpenAI**
 async function generateResponse(message, context, provider, model) {
@@ -111,7 +151,7 @@ Forneça informações sobre inversores e geradores híbridos.
 ### 📌 Informações Recuperadas:
 ${trimmedContext}
 
-✅ Use estas informações como base para a resposta. Se necessário, peça mais detalhes ao usuário.
+✅ Use these information as the basis for the response. If necessary, ask for more details from the user.
     `;
   } else {
     // 🛠️ **Fallback: Allow OpenAI to answer freely**
@@ -145,7 +185,7 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
         messages: [
           { role: "system", content: systemMessage },
           ...chatHistory.slice(-6),
-          { role: "user", content: message },
+          { role: "user", : message },
         ],
         max_tokens: 1500,
         temperature: 0.7,
