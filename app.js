@@ -74,7 +74,7 @@ async function fetchContext(message) {
 
     // 🔍 Query BlueW2 (Hybrid Search)
     // Note: Pinecone's Node.js client currently supports only dense vectors for querying.
-    // To perform hybrid search, you need to use the REST API directly.
+    // To perform hybrid search, use the REST API directly.
     const pineconeResponseBlueW2 = await fetch("https://bluew2-xek6roj.svc.aped-4627-b74a.pinecone.io/query", {
       method: "POST",
       headers: {
@@ -165,7 +165,7 @@ ${trimmedContext}
 ### 🔍 Histórico de Conversa:
 ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.content}` : `🤖 Roberta: ${msg.content}`).join("\n")}
 
-📢 **Responda de forma clara e formatada em Markdown.`
+📢 **Responda de forma clara e formatada em Markdown.**
 `.trim();
 
   if (provider === "openai") {
