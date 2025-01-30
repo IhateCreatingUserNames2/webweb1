@@ -1,6 +1,6 @@
 const express = require("express");
 const bodyParser = require("body-parser");
-const { PineconeClient } = require("@pinecone-database/pinecone"); // Correct import
+const { Pinecone } = require("@pinecone-database/pinecone"); // Use Pinecone as per backup
 const fetch = require("node-fetch");
 const fs = require("fs");
 const path = require("path");
@@ -15,7 +15,6 @@ const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // Pinecone Configuration
-const PINECONE_ENVIRONMENT = process.env.PINECONE_ENVIRONMENT || "us-east-1"; // Set to 'us-east-1' as per your setup
 const PINECONE_HOST_BLUEW = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Host for BlueW index
 const PINECONE_HOST_BLUEW2 = "https://bluew2-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Host for BlueW2 index
 const INDEX_NAME_BLUEW = "bluew"; // Index for dense vector search
@@ -33,33 +32,15 @@ if (!PINECONE_API_KEY || !OPENAI_API_KEY || !MINI_MAX_API_KEY) {
 }
 
 // Initialize Pinecone clients
-const pineconeBlueW = new PineconeClient();
-const pineconeBlueW2 = new PineconeClient();
+const pineconeBlueW = new Pinecone({
+  apiKey: PINECONE_API_KEY,
+  environment: "us-east-1", // As per your setup
+});
 
-(async () => {
-  try {
-    // Initialize Pinecone Clients
-    await pineconeBlueW.init({
-      apiKey: PINECONE_API_KEY,
-      environment: PINECONE_ENVIRONMENT,
-    });
-
-    await pineconeBlueW2.init({
-      apiKey: PINECONE_API_KEY,
-      environment: PINECONE_ENVIRONMENT,
-    });
-
-    console.log("✅ Pinecone clients initialized successfully.");
-
-    // Start the server after Pinecone initialization
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running at: http://localhost:${PORT}`);
-    });
-  } catch (error) {
-    console.error("❌ Error initializing Pinecone clients:", error.message);
-    process.exit(1);
-  }
-})();
+const pineconeBlueW2 = new Pinecone({
+  apiKey: PINECONE_API_KEY,
+  environment: "us-east-1", // As per your setup
+});
 
 // Middleware
 app.use(bodyParser.json());
@@ -140,14 +121,14 @@ async function fetchFileContext(message) {
 }
 
 /**
- * 🛠️ Fetch relevant context from both Pinecone indexes and uploaded files
+ * 🛠️ Fetch relevant context from Pinecone indexes and uploaded files
  * @param {string} message - The user's input message.
  * @returns {string|null} - Combined relevant context or null if none found.
  */
 async function fetchContext(message) {
   try {
-    const indexBlueW = pineconeBlueW.Index(INDEX_NAME_BLUEW);
-    const indexBlueW2 = pineconeBlueW2.Index(INDEX_NAME_BLUEW2);
+    const indexBlueW = pineconeBlueW.index(INDEX_NAME_BLUEW, PINECONE_HOST_BLUEW);
+    const indexBlueW2 = pineconeBlueW2.index(INDEX_NAME_BLUEW2, PINECONE_HOST_BLUEW2);
 
     // 🧠 Get query embedding from OpenAI
     const embeddingResponse = await fetch("https://api.openai.com/v1/embeddings", {
@@ -156,7 +137,7 @@ async function fetchContext(message) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
-      body: JSON.stringify({ input: message, model: "text-embedding-ada-002" }),
+      body: JSON.stringify({ input: message, model: "text-embedding-3-large" }),
     });
 
     const embeddingData = await embeddingResponse.json();
@@ -166,91 +147,38 @@ async function fetchContext(message) {
 
     const queryVector = embeddingData.data[0].embedding;
 
-    // 🔍 Query BlueW (Dense Vector Search)
+    // 🔍 Query Pinecone BlueW (Dense Vector Search)
     const pineconeResponseBlueW = await indexBlueW.query({
       vector: queryVector,
-      topK: 5, // Adjust based on your needs
+      topK: 15,
       includeMetadata: true,
-      includeValues: false,
+      includeValues: true, // ✅ Ensure both Dense & Sparse embeddings are retrieved
     });
 
     console.log("🔍 Pinecone BlueW Raw Response:", JSON.stringify(pineconeResponseBlueW, null, 2));
 
-    // 🔍 Query BlueW2 (Hybrid Search)
-    // If you have a method to generate a valid sparse vector, implement it here.
-    // For demonstration, we'll assume no sparse vector is provided.
-    let pineconeResponseBlueW2;
-    let hybridData = null;
+    // 🏆 **Lowered threshold to include more results**
+    let relevantMatches = pineconeResponseBlueW.matches
+      .filter(match => match.score > 0.05) // 🔥 Allow scores above 0.05
+      .map(match => match.metadata.text);
 
-    // Example: Only perform hybrid search if you have a valid sparse vector
-    // Replace the following with your actual logic to create a sparse vector
-    const hasSparseVector = false; // Set to true if you have a sparse vector
+    console.log("📌 Relevant Context Found:", relevantMatches);
 
-    if (hasSparseVector) {
-      const sparseVector = {
-        indices: [10, 45, 16], // Example sparse indices
-        values: [0.5, 0.5, 0.2], // Example sparse values
-      };
-
-      // Validate sparse vector
-      if (sparseVector.indices.length && sparseVector.values.length) {
-        pineconeResponseBlueW2 = await fetch(`${PINECONE_HOST_BLUEW2}/query`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Api-Key": PINECONE_API_KEY,
-          },
-          body: JSON.stringify({
-            vector: queryVector,
-            topK: 5, // Adjust based on your needs
-            includeMetadata: true,
-            includeValues: false,
-            sparseVector: sparseVector,
-          }),
-        });
-
-        hybridData = await pineconeResponseBlueW2.json();
-        console.log("🔍 Pinecone BlueW2 Raw Response (Hybrid Search):", JSON.stringify(hybridData, null, 2));
-      } else {
-        console.warn("⚠️ Sparse vector is invalid. Skipping hybrid search.");
-      }
-    } else {
-      console.log("ℹ️ No sparse vector provided. Skipping hybrid search.");
+    // 🚀 **Dynamically adjust filtering**
+    if (relevantMatches.length === 0 && pineconeResponseBlueW.matches.length > 0) {
+      console.warn("⚠️ No high-score matches found, but some low-score results exist.");
+      relevantMatches = pineconeResponseBlueW.matches.map(match => match.metadata.text); // Fallback to all results
     }
 
-    // 🏆 **Filter matches based on score**
-    let relevantMatchesBlueW = [];
-    if (pineconeResponseBlueW.matches) {
-      relevantMatchesBlueW = pineconeResponseBlueW.matches
-        .filter((match) => match.score > 0.4) // Example threshold for BlueW
-        .map((match) => match.metadata.text);
-    } else {
-      console.warn("⚠️ No matches found in BlueW.");
-    }
-
-    console.log("📌 Relevant Context Found (BlueW):", relevantMatchesBlueW);
-
-    // Handle hybrid search results
-    let relevantMatchesBlueW2 = [];
-    if (hybridData && hybridData.matches) {
-      relevantMatchesBlueW2 = hybridData.matches
-        .filter((match) => match.score > 0.1) // Example threshold for BlueW2
-        .map((match) => match.metadata.text);
-    } else {
-      console.warn("⚠️ No matches found in BlueW2 or hybridData is undefined.");
-    }
-
-    console.log("📌 Relevant Context Found (BlueW2 - Hybrid):", relevantMatchesBlueW2);
-
-    // ✅ Fetch context from files
+    // Fetch context from files
     const fileContext = await fetchFileContext(message);
 
-    // 🚀 **Combine contexts with separators**
+    // Combine contexts with separators
     const pineconeContext = [
       "### 📌 Dense Vector Context (BlueW):",
-      relevantMatchesBlueW.length ? relevantMatchesBlueW.join("\n") : "No relevant context found.",
+      relevantMatches.length ? relevantMatches.join("\n") : "No relevant context found.",
       "### 📌 Hybrid Search Context (BlueW2):",
-      relevantMatchesBlueW2.length ? relevantMatchesBlueW2.join("\n") : "No relevant hybrid context found.",
+      "No relevant hybrid context found.", // Placeholder
     ].join("\n\n");
 
     const combinedContext = fileContext
@@ -285,7 +213,7 @@ async function generateResponse(message, context, provider, model) {
 
   let systemMessage = `
 Você é Roberta, assistente virtual da BlueWidow Energia LTDA.
-Forneça informações sobre os serviços da BlueWidow em energia solar, como geradores, usinas solares e etc...
+Forneça informações sobre inversores e geradores híbridos.
 --- cálculo da potência da usina em KWP (quantidade de módulos):
 consumo em kWh/mês dividido por (5.2 (irradiação Goiás) x 30 (dias de geração) x 0.8 (fator perda do sistema)).
   `;
@@ -308,12 +236,7 @@ ${trimmedContext}
 
   systemMessage += `
 ### 🔍 Histórico de Conversa:
-${chatHistory
-    .slice(-6)
-    .map((msg) =>
-      msg.role === "user" ? `👤 Usuário: ${msg.content}` : `🤖 Roberta: ${msg.content}`
-    )
-    .join("\n")}
+${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.content}` : `🤖 Roberta: ${msg.content}`).join("\n")}
 
 📢 **Responda de forma clara e formatada em Markdown.**
 `.trim();
@@ -346,10 +269,7 @@ ${chatHistory
     console.log("💬 OpenAI Response:", JSON.stringify(openaiData, null, 2));
 
     if (openaiData.choices?.[0]?.message?.content) {
-      chatHistory.push({
-        role: "assistant",
-        content: openaiData.choices[0].message.content.trim(),
-      });
+      chatHistory.push({ role: "assistant", content: openaiData.choices[0].message.content.trim() });
       return openaiData.choices[0].message.content.trim();
     }
 
