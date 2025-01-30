@@ -60,7 +60,7 @@ async function fetchContext(message) {
     // 🔍 Query Pinecone
     const pineconeResponse = await index.query({
       vector: queryVector,
-      topK: 5,
+      topK: 15,
       includeMetadata: true,
       includeValues: true,  // ✅ Ensure both Dense & Sparse embeddings are retrieved
     });
@@ -71,7 +71,7 @@ async function fetchContext(message) {
 
     // 🏆 **Lowered threshold to include more results**
     let relevantMatches = pineconeResponse.matches
-      .filter(match => match.score > 0.2) // 🔥 Allow scores above 0.4
+      .filter(match => match.score > 0.05) // 🔥 Allow scores above 0.4
       .map(match => match.metadata.text);
 
     console.log("📌 Relevant Context Found:", relevantMatches);
