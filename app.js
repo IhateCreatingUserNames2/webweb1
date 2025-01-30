@@ -36,6 +36,7 @@ app.get("/", (req, res) => {
 const chatHistory = [];
 
 // 🛠️ **Fetch relevant context from Pinecone**
+// 🛠️ **Fetch relevant context from Pinecone**
 async function fetchContext(message) {
   try {
     const index = pinecone.index(INDEX_NAME, PINECONE_HOST);
@@ -62,10 +63,8 @@ async function fetchContext(message) {
       vector: queryVector,
       topK: 15,
       includeMetadata: true,
-      includeValues: true,  // ✅ Ensure both Dense & Sparse embeddings are retrieved
+      includeValues: true, // ✅ Ensure both Dense & Sparse embeddings are retrieved
     });
-
-
 
     console.log("🔍 Pinecone Raw Response:", JSON.stringify(pineconeResponse, null, 2));
 
@@ -88,6 +87,7 @@ async function fetchContext(message) {
     return null;
   }
 }
+
 
 // 🤖 **Generate response using OpenAI**
 async function generateResponse(message, context, provider, model) {
