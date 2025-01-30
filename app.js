@@ -62,7 +62,9 @@ async function fetchContext(message) {
       vector: queryVector,
       topK: 5,
       includeMetadata: true,
+      sparseValues: bm25.encodeQueries([message])[0]  // 🔥 Hybrid search using BM25
     });
+
 
     console.log("🔍 Pinecone Raw Response:", JSON.stringify(pineconeResponse, null, 2));
 
