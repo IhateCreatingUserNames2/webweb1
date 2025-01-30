@@ -136,7 +136,8 @@ async function generateResponse(message, context, provider, model) {
 
   let systemMessage = `
 Você é Roberta, assistente virtual da BlueWidow Energia LTDA.
-Forneça informações sobre inversores e geradores híbridos.
+Forneça informações sobre Os Serviços da BlueWidow Em Energia Solar, como geradores, usinas solares e etc...
+  --- cálculo da potência da usina em KWP ( quantidade de módulos ) : = consumo em kWh mês dividido por / ( 5.2 ( irradiação Goiás) x 30 ( dias de geração ) x 0,8 ( fator perda do sistema))
   `;
 
   // 🛠️ **Use Pinecone Context if Available**
