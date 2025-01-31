@@ -148,7 +148,7 @@ async function fetchContext(message) {
     // 🔍 Query Pinecone BlueW (Dense Vector Search)
     const pineconeResponseBlueW = await indexBlueW.query({
       vector: queryVector,
-      topK: 15,
+      topK: 5,
       includeMetadata: true,
       includeValues: true, // ✅ Ensure both Dense & Sparse embeddings are retrieved
     });
