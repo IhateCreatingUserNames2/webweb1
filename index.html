@@ -68,6 +68,24 @@
     .upload-container input[type="file"] {
       margin-right: 10px;
     }
+    /* Optional: Style markdown-generated HTML elements */
+    .assistant h1, .assistant h2, .assistant h3 {
+      margin: 10px 0;
+      color: #ffcc00;
+    }
+    .assistant p {
+      margin: 10px 0;
+    }
+    .assistant ul {
+      padding-left: 20px;
+    }
+    .assistant hr {
+      border: 1px solid #888;
+      margin: 15px 0;
+    }
+    .assistant a {
+      color: #66aaff;
+    }
   </style>
 </head>
 <body>
@@ -88,6 +106,8 @@
     </div>
   </div>
 
+  <!-- Load Marked (a Markdown parser) from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script>
     const chatLog = document.getElementById('chat-log');
     const chatInput = document.getElementById('chat-input');
@@ -98,7 +118,12 @@
     function appendMessage(role, content) {
       const msgDiv = document.createElement('div');
       msgDiv.classList.add('message', role);
-      msgDiv.textContent = content;
+      // For assistant messages, convert markdown to HTML for formatting.
+      if (role === 'assistant') {
+        msgDiv.innerHTML = marked.parse(content);
+      } else {
+        msgDiv.textContent = content;
+      }
       chatLog.appendChild(msgDiv);
       chatLog.scrollTop = chatLog.scrollHeight;
     }
@@ -119,7 +144,7 @@
         const data = await response.json();
         let reply = '';
 
-        // Depending on the response format from Pinecone
+        // Extract the assistant reply from the returned JSON
         if (data.chat_completion && data.chat_completion.choices && data.chat_completion.choices.length > 0) {
           reply = data.chat_completion.choices[0].message.content;
         } else if (data.message && data.message.content) {
