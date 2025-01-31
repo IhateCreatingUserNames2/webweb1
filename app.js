@@ -125,10 +125,10 @@ async function fetchFileContext(message) {
  */
 async function fetchContext(message) {
   try {
-    const indexBlueW = pineconeBlueW.index(INDEX_NAME_BLUEW, PINECONE_HOST_BLUEW);
-    const indexBlueW2 = pineconeBlueW2.index(INDEX_NAME_BLUEW2, PINECONE_HOST_BLUEW2);
+    const indexDense = pineconeBlueW.index(INDEX_NAME_BLUEW, PINECONE_HOST_BLUEW);
+    const indexSparse = pineconeBlueW2.index(INDEX_NAME_BLUEW2, PINECONE_HOST_BLUEW2);
 
-    // 🧠 Get query embedding from OpenAI
+    // 🔥 Generate Dense Embeddings
     const embeddingResponse = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
       headers: {
@@ -145,45 +145,54 @@ async function fetchContext(message) {
 
     const queryVector = embeddingData.data[0].embedding;
 
-    // 🔍 Query Pinecone BlueW (Dense Vector Search)
-    const pineconeResponseBlueW = await indexBlueW.query({
+    // 🔥 Create Sparse Embeddings
+    const sparseVector = {
+      indices: queryVector.map((_, i) => i),
+      values: queryVector.map(v => (v > 0 ? 1 : 0)), // Basic sparse embedding
+    };
+
+    // 🔍 Query Pinecone (Dense Search)
+    const pineconeResponseDense = await indexDense.query({
       vector: queryVector,
       topK: 5,
       includeMetadata: true,
-      includeValues: true, // ✅ Ensure both Dense & Sparse embeddings are retrieved
+      includeValues: false,
     });
 
-    console.log("🔍 Pinecone BlueW Raw Response:", JSON.stringify(pineconeResponseBlueW, null, 2));
+    // 🔍 Query Pinecone (Sparse Search)
+    const pineconeResponseSparse = await indexSparse.query({
+      vector: queryVector,
+      sparseVector: sparseVector,
+      topK: 5,
+      includeMetadata: true,
+      includeValues: false,
+    });
 
-    // 🏆 **Lowered threshold to include more results**
-    let relevantMatches = pineconeResponseBlueW.matches
-      .filter(match => match.score > 0.4) // 🔥 Allow scores above 0.05
-      .map(match => match.metadata.text);
-
-    console.log("📌 Relevant Context Found:", relevantMatches);
-
-    // 🚀 **Dynamically adjust filtering**
-    if (relevantMatches.length === 0 && pineconeResponseBlueW.matches.length > 0) {
-      console.warn("⚠️ No high-score matches found, but some low-score results exist.");
-      relevantMatches = pineconeResponseBlueW.matches.map(match => match.metadata.text); // Fallback to all results
+    // Extract metadata dynamically
+    function formatMatchMetadata(match) {
+     let metadataText = Object.entries(match.metadata)
+        .map(([key, value]) => `**${key}**: ${value}`)
+        .join("\n");
+     return `📌 **Match Found:**\n${metadataText}`;
     }
+    
+    // Extract results
+    let relevantMatchesDense = pineconeResponseDense.matches.map(formatMatchMetadata);
+    let relevantMatchesSparse = pineconeResponseSparse.matches.map(formatMatchMetadata);
 
     // Fetch context from files
     const fileContext = await fetchFileContext(message);
 
-    // Combine contexts with separators
-    const pineconeContext = [
-      "### 📌 Dense Vector Context (BlueW):",
-      relevantMatches.length ? relevantMatches.join("\n") : "No relevant context found.",
-      "### 📌 Hybrid Search Context (BlueW2):",
-      "No relevant hybrid context found.", // Placeholder
+    // Combine contexts
+    const combinedContext = [
+      "### 🔍 Dense Search Results (BlueW):",
+      relevantMatchesDense.length ? relevantMatchesDense.join("\n") : "No results.",
+      "### 🔍 Sparse Search Results (BlueW2):",
+      relevantMatchesSparse.length ? relevantMatchesSparse.join("\n") : "No results.",
+      fileContext ? `### 📂 File Results:\n${fileContext}` : ""
     ].join("\n\n");
 
-    const combinedContext = fileContext
-      ? `${pineconeContext}\n\n### 📂 File-based Context:\n${fileContext}`
-      : pineconeContext;
-
-    return combinedContext.length ? combinedContext : null;
+    return combinedContext;
   } catch (error) {
     console.error("❌ Error in fetchContext:", error.message);
     return null;
