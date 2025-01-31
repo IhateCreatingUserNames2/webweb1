@@ -1,3 +1,4 @@
+// app.js
 const express = require('express');
 const axios = require('axios');
 const multer = require('multer');
@@ -12,11 +13,11 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from the root directory
-app.use(express.static(path.resolve(__dirname)));
+// Serve static files from the "public" folder
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Load environment variables
-const PINECONE_API_KEY = process.env.PINECONE_API_KEY ;
+const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
 const ASSISTANT_NAME = process.env.ASSISTANT_NAME || 'bluew';
 const PINECONE_BASE_URL = 'https://prod-1-data.ke.pinecone.io';
 
@@ -56,12 +57,10 @@ app.post('/api/chat', async (req, res) => {
 // FILE UPLOAD ENDPOINT
 // ===============================
 
-// Configure multer for /uploads/ folder
+// Configure multer to store uploaded files temporarily in the "uploads" folder
 const upload = multer({
   dest: 'uploads/',
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10 MB limit
-  },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
   fileFilter: (req, file, cb) => {
     // Allow only PDF and plain text files (adjust as needed)
     const allowedTypes = ['application/pdf', 'text/plain'];
@@ -87,12 +86,14 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     // File upload endpoint on Pinecone (note the endpoint URL structure)
     const uploadUrl = `${PINECONE_BASE_URL}/assistant/files/${ASSISTANT_NAME}`;
 
-    const response = await axios.post(
-      `${PINECONE_BASE_URL}/assistant/files/${ASSISTANT_NAME}`,
-      formData,
-      { headers: { 'Api-Key': PINECONE_API_KEY, ...formData.getHeaders() } }
-    );
+    const response = await axios.post(uploadUrl, formData, {
+      headers: {
+        'Api-Key': PINECONE_API_KEY,
+        ...formData.getHeaders(),
+      },
+    });
 
+    // Remove the temporary file after upload
     fs.unlink(filePath, (err) => {
       if (err) console.error('Error deleting temporary file:', err);
     });
