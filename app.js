@@ -13,8 +13,8 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from the "public" folder
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static files from the root folder
+app.use(express.static(path.resolve(__dirname)));
 
 // Load environment variables
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
