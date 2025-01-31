@@ -19,7 +19,7 @@
     "csv-parser": "^3.0.0",
     "node-fetch": "^2.6.7",
     "axios": "^1.4.0",
-    "vectorious": "^0.6.4",
+    "vectorious": "^6.1.14",
     "@qdrant/js-client-rest": "^1.0.0"
   },
   "engines": {
