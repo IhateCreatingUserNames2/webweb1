@@ -58,7 +58,7 @@ app.post('/api/chat', async (req, res) => {
 
 // Configure multer for /uploads/ folder
 const upload = multer({
-  dest: path.resolve(__dirname, 'uploads'),
+ dest: 'uploads/',
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['application/pdf', 'text/plain'];
