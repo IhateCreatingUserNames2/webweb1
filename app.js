@@ -1,4 +1,4 @@
-// server.js
+// app.js
 
 require('dotenv').config();
 const express = require("express");
@@ -7,19 +7,30 @@ const fetch = require("node-fetch");
 const fs = require("fs");
 const path = require("path");
 const csvParser = require("csv-parser");
-const { Vector } = require("vectorious");
+const { QdrantClient } = require("@qdrant/js-client-rest"); // Import Qdrant Client
+const { Vector } = require("vectorious"); // For potential vector operations (optional)
+const axios = require("axios"); // For HTTP requests
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// API Keys
+// API Keys and URLs
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const QDRANT_URL = process.env.QDRANT_URL;
+const QDRANT_API_KEY = process.env.QDRANT_API_KEY;
 
 // Configuration
 const UPLOADS_DIR = path.join(__dirname, "uploads"); // Directory for uploaded files
+const COLLECTION_NAME = "chatbot_collection"; // Qdrant collection name
 const ALLOWED_MODELS = ["gpt-4o", "chatgpt-4o-latest", "o1"];
 const MAX_CONTEXT_LENGTH = 2000;
 const EMBEDDING_MODEL = "text-embedding-ada-002"; // Use a lightweight embedding model
+
+// Initialize Qdrant Client
+const qdrant = new QdrantClient({
+  url: QDRANT_URL, // Qdrant Cloud endpoint
+  apiKey: QDRANT_API_KEY, // Qdrant Cloud API key
+});
 
 // Middleware
 app.use(bodyParser.json());
@@ -33,9 +44,6 @@ app.get("/", (req, res) => {
 // Chat history storage
 const chatHistory = [];
 
-// In-memory vector store
-let vectorStore = [];
-
 /**
  * 📂 Load and preprocess documents from uploads directory
  */
@@ -48,6 +56,9 @@ async function loadDocuments() {
   const txtFiles = fs.readdirSync(UPLOADS_DIR).filter((file) => file.endsWith(".txt"));
   const csvFiles = fs.readdirSync(UPLOADS_DIR).filter((file) => file.endsWith(".csv"));
 
+  // Initialize Qdrant collection
+  await initializeQdrantCollection();
+
   // Process .txt files
   for (const file of txtFiles) {
     const filePath = path.join(UPLOADS_DIR, file);
@@ -55,7 +66,7 @@ async function loadDocuments() {
     // Split content into chunks (e.g., 500 characters)
     const chunks = splitText(content, 500);
     for (const chunk of chunks) {
-      vectorStore.push({ source: file, content: chunk, embedding: null });
+      await addDocumentToQdrant(file, chunk);
     }
   }
 
@@ -69,11 +80,11 @@ async function loadDocuments() {
         .on("data", (row) => {
           rows.push(JSON.stringify(row));
         })
-        .on("end", () => {
+        .on("end", async () => {
           // Split rows into chunks
           const chunks = splitText(rows.join(" "), 500);
           for (const chunk of chunks) {
-            vectorStore.push({ source: file, content: chunk, embedding: null });
+            await addDocumentToQdrant(file, chunk);
           }
           resolve();
         })
@@ -84,8 +95,7 @@ async function loadDocuments() {
     });
   }
 
-  // Generate embeddings for all chunks
-  await generateEmbeddingsForStore();
+  console.log("🎉 All documents loaded into Qdrant.");
 }
 
 /**
@@ -100,21 +110,73 @@ function splitText(text, maxLength) {
 }
 
 /**
- * 🔑 Generate embeddings for all documents in the vector store
+ * 🔑 Initialize Qdrant collection
  */
-async function generateEmbeddingsForStore() {
-  console.log("🧮 Generating embeddings for documents...");
-  const batchSize = 1000; // Adjust based on OpenAI rate limits
-  for (let i = 0; i < vectorStore.length; i += batchSize) {
-    const batch = vectorStore.slice(i, i + batchSize);
-    const texts = batch.map(doc => doc.content);
-    const embeddings = await getEmbeddings(texts);
-    for (let j = 0; j < batch.length; j++) {
-      vectorStore[i + j].embedding = embeddings[j];
+async function initializeQdrantCollection() {
+  try {
+    // Check if collection exists
+    const collections = await qdrant.getCollections();
+    const exists = collections.collections.some(col => col.name === COLLECTION_NAME);
+    if (exists) {
+      console.log(`✅ Qdrant collection "${COLLECTION_NAME}" already exists.`);
+      return;
     }
-    console.log(`✅ Generated embeddings for ${i + batch.length} / ${vectorStore.length} documents.`);
+
+    // Create collection
+    await qdrant.createCollection({
+      collection_name: COLLECTION_NAME,
+      vectors: {
+        size: 1536, // Size of ada-002 embeddings
+        distance: "Cosine"
+      },
+    });
+    console.log(`✅ Qdrant collection "${COLLECTION_NAME}" created.`);
+  } catch (error) {
+    console.error("❌ Error initializing Qdrant collection:", error.message);
+    throw error;
   }
-  console.log("🎉 All embeddings generated.");
+}
+
+/**
+ * 🔑 Add a document to Qdrant
+ * @param {string} source 
+ * @param {string} content 
+ */
+async function addDocumentToQdrant(source, content) {
+  try {
+    const embeddings = await getEmbeddings([content]);
+    const vector = embeddings[0];
+
+    // Create a unique ID for the document
+    const id = generateUniqueId();
+
+    // Add to Qdrant
+    await qdrant.upsert({
+      collection_name: COLLECTION_NAME,
+      points: [
+        {
+          id: id,
+          vector: vector,
+          payload: {
+            source: source,
+            content: content
+          }
+        }
+      ]
+    });
+
+    console.log(`✅ Added document ID ${id} from ${source}`);
+  } catch (error) {
+    console.error("❌ Error adding document to Qdrant:", error.message);
+  }
+}
+
+/**
+ * 🔑 Generate a unique ID
+ * @returns {string}
+ */
+function generateUniqueId() {
+  return Math.random().toString(36).substr(2, 9);
 }
 
 /**
@@ -145,35 +207,7 @@ async function getEmbeddings(texts) {
 }
 
 /**
- * 📐 Compute cosine similarity between two vectors
- * @param {number[]} vecA 
- * @param {number[]} vecB 
- * @returns {number}
- */
-function cosineSimilarity(vecA, vecB) {
-  const a = new Vector(vecA);
-  const b = new Vector(vecB);
-  return a.dot(b) / (a.magnitude() * b.magnitude());
-}
-
-/**
- * 🔍 Retrieve top N relevant documents based on similarity
- * @param {number[]} queryEmbedding 
- * @param {number} topK 
- * @returns {Array}
- */
-function retrieveRelevantDocuments(queryEmbedding, topK = 5) {
-  const similarities = vectorStore.map(doc => ({
-    ...doc,
-    similarity: cosineSimilarity(queryEmbedding, doc.embedding),
-  }));
-
-  similarities.sort((a, b) => b.similarity - a.similarity);
-  return similarities.slice(0, topK);
-}
-
-/**
- * ✅ Fetch context from stored files using embeddings
+ * ✅ Fetch context using Qdrant's AI Search
  * @param {string} message - The user's input message.
  * @returns {string|null} - Combined relevant context or null if none found.
  */
@@ -183,15 +217,22 @@ async function fetchContext(message) {
     const embeddings = await getEmbeddings([message]);
     const queryEmbedding = embeddings[0];
 
-    // Retrieve top 5 relevant documents
-    const relevantDocs = retrieveRelevantDocuments(queryEmbedding, 5);
+    // Query Qdrant for similar vectors
+    const searchResult = await qdrant.search({
+      collection_name: COLLECTION_NAME,
+      query_vector: queryEmbedding,
+      limit: 5,
+      with_payload: true,
+    });
 
-    if (!relevantDocs.length) {
+    const results = searchResult.result;
+
+    if (!results.length) {
       return null;
     }
 
     // Format the retrieved contexts
-    const relevantContext = relevantDocs.map(doc => `📌 From ${doc.source}:\n${doc.content}`).join("\n\n");
+    const relevantContext = results.map(doc => `📌 **Fonte:** ${doc.payload.source}\n${doc.payload.content}`).join("\n\n");
     return relevantContext;
   } catch (error) {
     console.error("❌ Error in fetchContext:", error.message);
@@ -224,7 +265,7 @@ Forneça informações sobre inversores e geradores híbridos.
 consumo em kWh/mês dividido por (5.2 (irradiação Goiás) x 30 (dias de geração) x 0.8 (fator perda do sistema)).
   `;
 
-  // 🛠️ **Use File-based Context if Available**
+  // 🛠️ **Use AI Search Context if Available**
   if (trimmedContext) {
     systemMessage += `
 ### 📌 Informações Recuperadas:
@@ -253,34 +294,39 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
       model = "gpt-4o";
     }
 
-    const chatResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          { role: "system", content: systemMessage },
-          ...chatHistory.slice(-6),
-          { role: "user", content: message },
-        ],
-        max_tokens: 1500,
-        temperature: 0.7,
-      }),
-    });
+    try {
+      const chatResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: "system", content: systemMessage },
+            ...chatHistory.slice(-6),
+            { role: "user", content: message },
+          ],
+          max_tokens: 1500,
+          temperature: 0.7,
+        }),
+      });
 
-    const openaiData = await chatResponse.json();
-    console.log("💬 OpenAI Response:", JSON.stringify(openaiData, null, 2));
+      const openaiData = await chatResponse.json();
+      console.log("💬 OpenAI Response:", JSON.stringify(openaiData, null, 2));
 
-    if (openaiData.choices?.[0]?.message?.content) {
-      const replyContent = openaiData.choices[0].message.content.trim();
-      chatHistory.push({ role: "assistant", content: replyContent });
-      return replyContent;
+      if (openaiData.choices?.[0]?.message?.content) {
+        const replyContent = openaiData.choices[0].message.content.trim();
+        chatHistory.push({ role: "assistant", content: replyContent });
+        return replyContent;
+      }
+
+      return "Nenhuma resposta gerada.";
+    } catch (error) {
+      console.error("❌ Error generating OpenAI response:", error.message);
+      return "Ocorreu um erro ao gerar a resposta.";
     }
-
-    return "Nenhuma resposta gerada.";
   } else {
     throw new Error("Invalid provider selected.");
   }
@@ -293,7 +339,7 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
 app.post("/chatbot", async (req, res) => {
   const { message, provider, model } = req.body;
 
-  if (!message || !provider || !model) {
+  if (!message || !provider || (provider === "openai" && !model)) {
     return res.status(400).json({ error: "Message, provider, and model are required." });
   }
 
