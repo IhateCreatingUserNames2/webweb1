@@ -7,12 +7,15 @@ const fetch = require("node-fetch");
 const fs = require("fs");
 const path = require("path");
 const csvParser = require("csv-parser");
-const { QdrantClient } = require("@qdrant/js-client-rest"); // Import Qdrant Client
-const { Vector } = require("vectorious"); // For potential vector operations (optional)
+const { QdrantClient } = require("@qdrant/js-client-rest"); // Qdrant Client
 const axios = require("axios"); // For HTTP requests
+const MarkdownIt = require('markdown-it'); // For rendering Markdown
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Initialize Markdown renderer
+const md = new MarkdownIt();
 
 // API Keys and URLs
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -116,6 +119,7 @@ async function initializeQdrantCollection() {
   try {
     // Check if collection exists
     const collections = await qdrant.getCollections();
+    console.log("🔍 Retrieved Collections:", JSON.stringify(collections, null, 2));
     const exists = collections.collections.some(col => col.name === COLLECTION_NAME);
     if (exists) {
       console.log(`✅ Qdrant collection "${COLLECTION_NAME}" already exists.`);
@@ -217,13 +221,17 @@ async function fetchContext(message) {
     const embeddings = await getEmbeddings([message]);
     const queryEmbedding = embeddings[0];
 
+    console.log("🔍 Query Embedding:", queryEmbedding);
+
     // Query Qdrant for similar vectors
     const searchResult = await qdrant.search({
       collection_name: COLLECTION_NAME,
-      query_vector: queryEmbedding,
-      limit: 5,
-      with_payload: true,
+      vector: queryEmbedding, // Corrected parameter
+      top: 5, // Number of top results
+      with_payload: true, // Include payload in results
     });
+
+    console.log("🔍 Search Result:", JSON.stringify(searchResult, null, 2));
 
     const results = searchResult.result;
 
