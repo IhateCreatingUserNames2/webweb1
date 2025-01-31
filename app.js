@@ -7,7 +7,7 @@ const fetch = require("node-fetch");
 const fs = require("fs");
 const path = require("path");
 const csvParser = require("csv-parser");
-const { QdrantClient } = require("@qdrant/js-client-rest"); // Qdrant Client
+const { QdrantClient, models } = require("@qdrant/js-client-rest"); // Qdrant Client
 const axios = require("axios"); // For HTTP requests
 const MarkdownIt = require('markdown-it'); // For rendering Markdown
 
@@ -64,41 +64,55 @@ async function loadDocuments() {
 
   // Process .txt files
   for (const file of txtFiles) {
-    const filePath = path.join(UPLOADS_DIR, file);
-    const content = fs.readFileSync(filePath, "utf-8");
-    // Split content into chunks (e.g., 500 characters)
-    const chunks = splitText(content, 500);
-    for (const chunk of chunks) {
-      await addDocumentToQdrant(file, chunk);
+    const isEmbedded = await checkIfFileEmbedded(file);
+    if (!isEmbedded) {
+      console.log(`📄 Processing new file: ${file}`);
+      const filePath = path.join(UPLOADS_DIR, file);
+      const content = fs.readFileSync(filePath, "utf-8");
+      // Split content into chunks (e.g., 500 characters)
+      const chunks = splitText(content, 500);
+      for (const [index, chunk] of chunks.entries()) {
+        await addDocumentToQdrant(file, chunk, index);
+      }
+      console.log(`✅ Completed embedding for file: ${file}`);
+    } else {
+      console.log(`ℹ️ File already embedded: ${file}`);
     }
   }
 
   // Process .csv files
   for (const file of csvFiles) {
-    const filePath = path.join(UPLOADS_DIR, file);
-    await new Promise((resolve, reject) => {
-      const rows = [];
-      fs.createReadStream(filePath)
-        .pipe(csvParser())
-        .on("data", (row) => {
-          rows.push(JSON.stringify(row));
-        })
-        .on("end", async () => {
-          // Split rows into chunks
-          const chunks = splitText(rows.join(" "), 500);
-          for (const chunk of chunks) {
-            await addDocumentToQdrant(file, chunk);
-          }
-          resolve();
-        })
-        .on("error", (err) => {
-          console.error(`❌ Error reading CSV file ${file}:`, err.message);
-          reject(err);
-        });
-    });
+    const isEmbedded = await checkIfFileEmbedded(file);
+    if (!isEmbedded) {
+      console.log(`📄 Processing new CSV file: ${file}`);
+      const filePath = path.join(UPLOADS_DIR, file);
+      await new Promise((resolve, reject) => {
+        const rows = [];
+        fs.createReadStream(filePath)
+          .pipe(csvParser())
+          .on("data", (row) => {
+            rows.push(JSON.stringify(row));
+          })
+          .on("end", async () => {
+            // Split rows into chunks
+            const chunks = splitText(rows.join(" "), 500);
+            for (const [index, chunk] of chunks.entries()) {
+              await addDocumentToQdrant(file, chunk, index);
+            }
+            console.log(`✅ Completed embedding for CSV file: ${file}`);
+            resolve();
+          })
+          .on("error", (err) => {
+            console.error(`❌ Error reading CSV file ${file}:`, err.message);
+            reject(err);
+          });
+      });
+    } else {
+      console.log(`ℹ️ CSV file already embedded: ${file}`);
+    }
   }
 
-  console.log("🎉 All documents loaded into Qdrant.");
+  console.log("🎉 All documents processed and embedded into Qdrant.");
 }
 
 /**
@@ -119,7 +133,6 @@ async function initializeQdrantCollection() {
   try {
     // Check if collection exists
     const collections = await qdrant.getCollections();
-    console.log("🔍 Retrieved Collections:", JSON.stringify(collections, null, 2));
     const exists = collections.collections.some(col => col.name === COLLECTION_NAME);
     if (exists) {
       console.log(`✅ Qdrant collection "${COLLECTION_NAME}" already exists.`);
@@ -129,10 +142,10 @@ async function initializeQdrantCollection() {
     // Create collection
     await qdrant.createCollection({
       collection_name: COLLECTION_NAME,
-      vectors: {
+      vectors: new models.VectorParams({
         size: 1536, // Size of ada-002 embeddings
-        distance: "Cosine"
-      },
+        distance: models.Distance.Cosine
+      }),
     });
     console.log(`✅ Qdrant collection "${COLLECTION_NAME}" created.`);
   } catch (error) {
@@ -142,36 +155,68 @@ async function initializeQdrantCollection() {
 }
 
 /**
- * 🔑 Add a document to Qdrant
- * @param {string} source 
- * @param {string} content 
+ * 🔍 Check if a file has already been embedded
+ * @param {string} fileName 
+ * @returns {boolean}
  */
-async function addDocumentToQdrant(source, content) {
+async function checkIfFileEmbedded(fileName) {
+  try {
+    const filter = new models.Filter({
+      must: [
+        new models.FieldCondition({
+          key: "source",
+          match: {
+            value: fileName
+          }
+        })
+      ]
+    });
+
+    const searchResult = await qdrant.scroll({
+      collection_name: COLLECTION_NAME,
+      filter: filter,
+      limit: 1, // We just need to know if at least one point exists
+    });
+
+    return searchResult.result.length > 0;
+  } catch (error) {
+    console.error(`❌ Error checking if file ${fileName} is embedded:`, error.message);
+    return false;
+  }
+}
+
+/**
+ * 🔑 Add a document to Qdrant
+ * @param {string} source - File name
+ * @param {string} content - Chunked content
+ * @param {number} index - Chunk index
+ */
+async function addDocumentToQdrant(source, content, index) {
   try {
     const embeddings = await getEmbeddings([content]);
     const vector = embeddings[0];
 
-    // Create a unique ID for the document
-    const id = generateUniqueId();
+    // Create a unique ID for the document based on source and index
+    const id = `${source}-${index}`;
 
     // Add to Qdrant
     await qdrant.upsert({
       collection_name: COLLECTION_NAME,
       points: [
-        {
+        new models.PointStruct({
           id: id,
           vector: vector,
           payload: {
             source: source,
             content: content
           }
-        }
+        })
       ]
     });
 
     console.log(`✅ Added document ID ${id} from ${source}`);
   } catch (error) {
-    console.error("❌ Error adding document to Qdrant:", error.message);
+    console.error(`❌ Error adding document ID ${source}-${index} to Qdrant:`, error.message);
   }
 }
 
@@ -189,25 +234,30 @@ function generateUniqueId() {
  * @returns {number[][]}
  */
 async function getEmbeddings(texts) {
-  const response = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      input: texts,
-      model: EMBEDDING_MODEL,
-    }),
-  });
+  try {
+    const response = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        input: texts,
+        model: EMBEDDING_MODEL,
+      }),
+    });
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to fetch embeddings: ${error}`);
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to fetch embeddings: ${error}`);
+    }
+
+    const data = await response.json();
+    return data.data.map(item => item.embedding);
+  } catch (error) {
+    console.error("❌ Error fetching embeddings from OpenAI:", error.message);
+    throw error;
   }
-
-  const data = await response.json();
-  return data.data.map(item => item.embedding);
 }
 
 /**
@@ -226,9 +276,9 @@ async function fetchContext(message) {
     // Query Qdrant for similar vectors
     const searchResult = await qdrant.search({
       collection_name: COLLECTION_NAME,
-      vector: queryEmbedding, // Corrected parameter
-      top: 5, // Number of top results
-      with_payload: true, // Include payload in results
+      vector: queryEmbedding,
+      top: 5,
+      with_payload: true,
     });
 
     console.log("🔍 Search Result:", JSON.stringify(searchResult, null, 2));
@@ -361,7 +411,9 @@ app.post("/chatbot", async (req, res) => {
   }
 });
 
-// 🚀 **Start the server and load documents**
+/**
+ * 🏁 Start the server and load documents
+ */
 app.listen(PORT, async () => {
   console.log(`🚀 Server running at: http://localhost:${PORT}`);
   try {
