@@ -13,7 +13,7 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from the root folder
+// Serve static files from the root folder ****** ITS THE ROOT FOLDER THE CORRECT 
 app.use(express.static(path.resolve(__dirname)));
 
 // Load environment variables
@@ -35,7 +35,7 @@ app.post('/api/chat', async (req, res) => {
       `${PINECONE_BASE_URL}/assistant/chat/${ASSISTANT_NAME}/chat/completions`,
       {
         messages: [{ role: 'user', content: message }],
-        stream: false, // Change to true if you want a streaming response
+        stream: false,
         model: 'gpt-4o',
       },
       {
@@ -45,7 +45,6 @@ app.post('/api/chat', async (req, res) => {
         },
       }
     );
-
     res.json(response.data);
   } catch (error) {
     console.error('Chat API Error:', error.response?.data || error.message);
@@ -62,7 +61,7 @@ const upload = multer({
   dest: 'uploads/',
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
   fileFilter: (req, file, cb) => {
-    // Allow only PDF and plain text files (adjust as needed)
+    // Allow only PDF and plain text files
     const allowedTypes = ['application/pdf', 'text/plain'];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
@@ -79,13 +78,10 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
   try {
     const filePath = req.file.path;
-    // Prepare a multipart form-data request using form-data
     const formData = new FormData();
     formData.append('file', fs.createReadStream(filePath), req.file.originalname);
 
-    // File upload endpoint on Pinecone (note the endpoint URL structure)
     const uploadUrl = `${PINECONE_BASE_URL}/assistant/files/${ASSISTANT_NAME}`;
-
     const response = await axios.post(uploadUrl, formData, {
       headers: {
         'Api-Key': PINECONE_API_KEY,
@@ -93,7 +89,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       },
     });
 
-    // Remove the temporary file after upload
+    // Delete the temporary file after upload
     fs.unlink(filePath, (err) => {
       if (err) console.error('Error deleting temporary file:', err);
     });
