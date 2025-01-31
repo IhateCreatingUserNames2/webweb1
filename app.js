@@ -248,11 +248,25 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
 📢 **Responda de forma clara e formatada em Markdown.**
 `.trim();
 
+  // Log the built prompt before sending to the LLM
+  console.log("📝 **Built System Message:**\n", systemMessage);
+  console.log("📝 **Chat History Included in Prompt:**\n", JSON.stringify(chatHistory.slice(-6), null, 2));
+
   if (provider === "openai") {
     if (!ALLOWED_MODELS.includes(model)) {
       console.warn(`⚠️ Modelo inválido "${model}" selecionado. Defaulting to gpt-4o.`);
       model = "gpt-4o";
     }
+
+    // Prepare the messages array for OpenAI
+    const messagesToSend = [
+      { role: "system", content: systemMessage },
+      ...chatHistory.slice(-6),
+      { role: "user", content: message },
+    ];
+
+    // Log the complete messages being sent to OpenAI
+    console.log("📤 **Messages Sent to OpenAI:**\n", JSON.stringify(messagesToSend, null, 2));
 
     const chatResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -262,11 +276,7 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
       },
       body: JSON.stringify({
         model: model,
-        messages: [
-          { role: "system", content: systemMessage },
-          ...chatHistory.slice(-6),
-          { role: "user", content: message },
-        ],
+        messages: messagesToSend,
         max_tokens: 1500,
         temperature: 0.7,
       }),
