@@ -99,7 +99,6 @@
     <div class="upload-container">
       <h3>Upload File</h3>
       <form id="upload-form">
-        <!-- Accept PDF and TXT files (you can adjust the accepted types as needed) -->
         <input type="file" id="file-input" name="file" accept=".pdf,.txt" />
         <button type="submit">Upload</button>
       </form>
@@ -114,12 +113,12 @@
     const sendBtn = document.getElementById('send-btn');
     const uploadForm = document.getElementById('upload-form');
 
-    // Function to append a message to the chat log
+    // Append a message to the chat log, converting markdown for assistant replies.
     function appendMessage(role, content) {
       const msgDiv = document.createElement('div');
       msgDiv.classList.add('message', role);
-      // For assistant messages, convert markdown to HTML for formatting.
       if (role === 'assistant') {
+        // Convert markdown to HTML using marked.
         msgDiv.innerHTML = marked.parse(content);
       } else {
         msgDiv.textContent = content;
@@ -144,13 +143,15 @@
         const data = await response.json();
         let reply = '';
 
-        // Extract the assistant reply from the returned JSON
+        // Try extracting the assistant reply from different possible properties.
         if (data.chat_completion && data.chat_completion.choices && data.chat_completion.choices.length > 0) {
           reply = data.chat_completion.choices[0].message.content;
+        } else if (data.choices && data.choices.length > 0) {
+          reply = data.choices[0].message.content;
         } else if (data.message && data.message.content) {
           reply = data.message.content;
         } else {
-          reply = JSON.stringify(data);
+          reply = JSON.stringify(data, null, 2);
         }
         appendMessage('assistant', reply);
       } catch (error) {
@@ -159,14 +160,14 @@
       }
     });
 
-    // Allow sending message with the Enter key
+    // Allow sending message with the Enter key.
     chatInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
         sendBtn.click();
       }
     });
 
-    // Handle file upload
+    // Handle file upload.
     uploadForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fileInput = document.getElementById('file-input');
@@ -184,7 +185,7 @@
         });
         const result = await response.json();
         alert('File uploaded successfully.');
-        fileInput.value = ''; // Clear the file input
+        fileInput.value = ''; // Clear the file input.
       } catch (error) {
         console.error('File upload error:', error);
         alert('File upload failed.');
