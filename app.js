@@ -31,15 +31,13 @@ if (!PINECONE_API_KEY || !OPENAI_API_KEY || !MINI_MAX_API_KEY) {
   process.exit(1);
 }
 
-// Initialize Pinecone clients
+// Initialize Pinecone clients without 'environment'
 const pineconeBlueW = new Pinecone({
   apiKey: PINECONE_API_KEY,
-   // As per your setup
 });
 
 const pineconeBlueW2 = new Pinecone({
   apiKey: PINECONE_API_KEY,
-   // As per your setup
 });
 
 // Middleware
@@ -299,4 +297,9 @@ app.post("/chatbot", async (req, res) => {
     console.error("❌ Error in /chatbot:", error.message);
     res.status(500).json({ error: "Ocorreu um erro ao processar sua solicitação." });
   }
+});
+
+// 🚀 **Start the server**
+app.listen(PORT, () => {
+  console.log(`🚀 Server running at: http://localhost:${PORT}`);
 });
