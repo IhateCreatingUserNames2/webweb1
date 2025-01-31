@@ -58,11 +58,18 @@ app.post('/api/chat', async (req, res) => {
 
 // Configure multer for /uploads/ folder
 const upload = multer({
- dest: 'uploads/',
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
+  dest: 'uploads/',
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10 MB limit
+  },
   fileFilter: (req, file, cb) => {
+    // Allow only PDF and plain text files (adjust as needed)
     const allowedTypes = ['application/pdf', 'text/plain'];
-    allowedTypes.includes(file.mimetype) ? cb(null, true) : cb(new Error('Invalid file type. Only PDF and TXT files allowed.'));
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only PDF and TXT files are allowed.'));
+    }
   },
 });
 
@@ -73,8 +80,12 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
   try {
     const filePath = req.file.path;
+    // Prepare a multipart form-data request using form-data
     const formData = new FormData();
     formData.append('file', fs.createReadStream(filePath), req.file.originalname);
+
+    // File upload endpoint on Pinecone (note the endpoint URL structure)
+    const uploadUrl = `${PINECONE_BASE_URL}/assistant/files/${ASSISTANT_NAME}`;
 
     const response = await axios.post(
       `${PINECONE_BASE_URL}/assistant/files/${ASSISTANT_NAME}`,
