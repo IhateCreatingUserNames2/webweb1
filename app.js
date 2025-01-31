@@ -1,38 +1,43 @@
-// app.js
-
-require('dotenv').config();
 const express = require("express");
 const bodyParser = require("body-parser");
+const { Pinecone } = require("@pinecone-database/pinecone"); // Use Pinecone as per backup
 const fetch = require("node-fetch");
 const fs = require("fs");
 const path = require("path");
 const csvParser = require("csv-parser");
-const { QdrantClient, models } = require("@qdrant/js-client-rest"); // Qdrant Client
-const axios = require("axios"); // For HTTP requests
-const MarkdownIt = require('markdown-it'); // For rendering Markdown
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Initialize Markdown renderer
-const md = new MarkdownIt();
-
-// API Keys and URLs
+// API Keys
+const MINI_MAX_API_KEY = process.env.MiniMax_API_KEY;
+const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const QDRANT_URL = process.env.QDRANT_URL;
-const QDRANT_API_KEY = process.env.QDRANT_API_KEY;
 
-// Configuration
+// Pinecone Configuration
+const PINECONE_HOST_BLUEW = "https://bluew-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Host for BlueW index
+const PINECONE_HOST_BLUEW2 = "https://bluew2-xek6roj.svc.aped-4627-b74a.pinecone.io"; // Host for BlueW2 index
+const INDEX_NAME_BLUEW = "bluew"; // Index for dense vector search
+const INDEX_NAME_BLUEW2 = "bluew2"; // Index for hybrid (sparse-dense) search
+
 const UPLOADS_DIR = path.join(__dirname, "uploads"); // Directory for uploaded files
-const COLLECTION_NAME = "chatbot_collection"; // Qdrant collection name
-const ALLOWED_MODELS = ["gpt-4o", "chatgpt-4o-latest", "o1"];
-const MAX_CONTEXT_LENGTH = 2000;
-const EMBEDDING_MODEL = "text-embedding-ada-002"; // Use a lightweight embedding model
 
-// Initialize Qdrant Client
-const qdrant = new QdrantClient({
-  url: QDRANT_URL, // Qdrant Cloud endpoint
-  apiKey: QDRANT_API_KEY, // Qdrant Cloud API key
+// Allowed OpenAI models
+const ALLOWED_MODELS = ["gpt-4o", "chatgpt-4o-latest", "o1"];
+
+// Check for required API keys
+if (!PINECONE_API_KEY || !OPENAI_API_KEY || !MINI_MAX_API_KEY) {
+  console.error("❌ Missing API keys. Set them in the environment variables.");
+  process.exit(1);
+}
+
+// Initialize Pinecone clients without 'environment'
+const pineconeBlueW = new Pinecone({
+  apiKey: PINECONE_API_KEY,
+});
+
+const pineconeBlueW2 = new Pinecone({
+  apiKey: PINECONE_API_KEY,
 });
 
 // Middleware
@@ -48,58 +53,55 @@ app.get("/", (req, res) => {
 const chatHistory = [];
 
 /**
- * 📂 Load and preprocess documents from uploads directory
+ * ✅ Fetch context from stored files
+ * Scans .txt and .csv files in /uploads/ for relevant content based on the user's message.
+ * @param {string} message - The user's input message.
+ * @returns {string|null} - Combined relevant context or null if none found.
  */
-async function loadDocuments() {
-  if (!fs.existsSync(UPLOADS_DIR)) {
-    console.warn(`⚠️ Uploads directory not found at ${UPLOADS_DIR}.`);
-    return;
-  }
+async function fetchFileContext(message) {
+  try {
+    let relevantContext = [];
 
-  const txtFiles = fs.readdirSync(UPLOADS_DIR).filter((file) => file.endsWith(".txt"));
-  const csvFiles = fs.readdirSync(UPLOADS_DIR).filter((file) => file.endsWith(".csv"));
+    // Ensure the uploads directory exists
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      console.warn(`⚠️ Uploads directory not found at ${UPLOADS_DIR}. Skipping file-based context retrieval.`);
+      return null;
+    }
 
-  // Initialize Qdrant collection
-  await initializeQdrantCollection();
-
-  // Process .txt files
-  for (const file of txtFiles) {
-    const isEmbedded = await checkIfFileEmbedded(file);
-    if (!isEmbedded) {
-      console.log(`📄 Processing new file: ${file}`);
+    // Read all .txt files
+    const txtFiles = fs.readdirSync(UPLOADS_DIR).filter((file) => file.endsWith(".txt"));
+    for (const file of txtFiles) {
       const filePath = path.join(UPLOADS_DIR, file);
       const content = fs.readFileSync(filePath, "utf-8");
-      // Split content into chunks (e.g., 500 characters)
-      const chunks = splitText(content, 500);
-      for (const [index, chunk] of chunks.entries()) {
-        await addDocumentToQdrant(file, chunk, index);
-      }
-      console.log(`✅ Completed embedding for file: ${file}`);
-    } else {
-      console.log(`ℹ️ File already embedded: ${file}`);
-    }
-  }
 
-  // Process .csv files
-  for (const file of csvFiles) {
-    const isEmbedded = await checkIfFileEmbedded(file);
-    if (!isEmbedded) {
-      console.log(`📄 Processing new CSV file: ${file}`);
+      // Simple keyword search (case-insensitive)
+      if (content.toLowerCase().includes(message.toLowerCase())) {
+        const excerpt = content.length > 500 ? content.substring(0, 500) + "..." : content;
+        relevantContext.push(`📌 From ${file}: ${excerpt}`);
+      }
+    }
+
+    // Read all .csv files
+    const csvFiles = fs.readdirSync(UPLOADS_DIR).filter((file) => file.endsWith(".csv"));
+    for (const file of csvFiles) {
       const filePath = path.join(UPLOADS_DIR, file);
+      const csvData = [];
+
+      // Parse CSV asynchronously
       await new Promise((resolve, reject) => {
-        const rows = [];
         fs.createReadStream(filePath)
           .pipe(csvParser())
           .on("data", (row) => {
-            rows.push(JSON.stringify(row));
-          })
-          .on("end", async () => {
-            // Split rows into chunks
-            const chunks = splitText(rows.join(" "), 500);
-            for (const [index, chunk] of chunks.entries()) {
-              await addDocumentToQdrant(file, chunk, index);
+            const rowContent = JSON.stringify(row).toLowerCase();
+            if (rowContent.includes(message.toLowerCase())) {
+              csvData.push(JSON.stringify(row));
             }
-            console.log(`✅ Completed embedding for CSV file: ${file}`);
+          })
+          .on("end", () => {
+            if (csvData.length) {
+              const excerpts = csvData.slice(0, 5).join("\n");
+              relevantContext.push(`📌 From ${file}:\n${excerpts}`);
+            }
             resolve();
           })
           .on("error", (err) => {
@@ -107,191 +109,90 @@ async function loadDocuments() {
             reject(err);
           });
       });
-    } else {
-      console.log(`ℹ️ CSV file already embedded: ${file}`);
-    }
-  }
-
-  console.log("🎉 All documents processed and embedded into Qdrant.");
-}
-
-/**
- * ✂️ Split text into chunks of approximately `maxLength` characters
- * @param {string} text 
- * @param {number} maxLength 
- * @returns {string[]}
- */
-function splitText(text, maxLength) {
-  const regex = new RegExp(`.{1,${maxLength}}`, 'g');
-  return text.match(regex) || [];
-}
-
-/**
- * 🔑 Initialize Qdrant collection
- */
-async function initializeQdrantCollection() {
-  try {
-    // Check if collection exists
-    const collections = await qdrant.getCollections();
-    const exists = collections.collections.some(col => col.name === COLLECTION_NAME);
-    if (exists) {
-      console.log(`✅ Qdrant collection "${COLLECTION_NAME}" already exists.`);
-      return;
     }
 
-    // Create collection
-    await qdrant.createCollection({
-      collection_name: COLLECTION_NAME,
-      vectors: new models.VectorParams({
-        size: 1536, // Size of ada-002 embeddings
-        distance: models.Distance.Cosine
-      }),
-    });
-    console.log(`✅ Qdrant collection "${COLLECTION_NAME}" created.`);
+    return relevantContext.length ? relevantContext.join("\n\n") : null;
   } catch (error) {
-    console.error("❌ Error initializing Qdrant collection:", error.message);
-    throw error;
+    console.error("❌ Error in fetchFileContext:", error.message);
+    return null;
   }
 }
 
 /**
- * 🔍 Check if a file has already been embedded
- * @param {string} fileName 
- * @returns {boolean}
- */
-async function checkIfFileEmbedded(fileName) {
-  try {
-    const filter = new models.Filter({
-      must: [
-        new models.FieldCondition({
-          key: "source",
-          match: {
-            value: fileName
-          }
-        })
-      ]
-    });
-
-    const searchResult = await qdrant.scroll({
-      collection_name: COLLECTION_NAME,
-      filter: filter,
-      limit: 1, // We just need to know if at least one point exists
-    });
-
-    return searchResult.result.length > 0;
-  } catch (error) {
-    console.error(`❌ Error checking if file ${fileName} is embedded:`, error.message);
-    return false;
-  }
-}
-
-/**
- * 🔑 Add a document to Qdrant
- * @param {string} source - File name
- * @param {string} content - Chunked content
- * @param {number} index - Chunk index
- */
-async function addDocumentToQdrant(source, content, index) {
-  try {
-    const embeddings = await getEmbeddings([content]);
-    const vector = embeddings[0];
-
-    // Create a unique ID for the document based on source and index
-    const id = `${source}-${index}`;
-
-    // Add to Qdrant
-    await qdrant.upsert({
-      collection_name: COLLECTION_NAME,
-      points: [
-        new models.PointStruct({
-          id: id,
-          vector: vector,
-          payload: {
-            source: source,
-            content: content
-          }
-        })
-      ]
-    });
-
-    console.log(`✅ Added document ID ${id} from ${source}`);
-  } catch (error) {
-    console.error(`❌ Error adding document ID ${source}-${index} to Qdrant:`, error.message);
-  }
-}
-
-/**
- * 🔑 Generate a unique ID
- * @returns {string}
- */
-function generateUniqueId() {
-  return Math.random().toString(36).substr(2, 9);
-}
-
-/**
- * 📡 Fetch embeddings from OpenAI
- * @param {string[]} texts 
- * @returns {number[][]}
- */
-async function getEmbeddings(texts) {
-  try {
-    const response = await fetch("https://api.openai.com/v1/embeddings", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        input: texts,
-        model: EMBEDDING_MODEL,
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to fetch embeddings: ${error}`);
-    }
-
-    const data = await response.json();
-    return data.data.map(item => item.embedding);
-  } catch (error) {
-    console.error("❌ Error fetching embeddings from OpenAI:", error.message);
-    throw error;
-  }
-}
-
-/**
- * ✅ Fetch context using Qdrant's AI Search
+ * 🛠️ Fetch relevant context from Pinecone indexes and uploaded files
  * @param {string} message - The user's input message.
  * @returns {string|null} - Combined relevant context or null if none found.
  */
 async function fetchContext(message) {
   try {
-    // Generate embedding for the user message
-    const embeddings = await getEmbeddings([message]);
-    const queryEmbedding = embeddings[0];
+    const indexDense = pineconeBlueW.index(INDEX_NAME_BLUEW, PINECONE_HOST_BLUEW);
+    const indexSparse = pineconeBlueW2.index(INDEX_NAME_BLUEW2, PINECONE_HOST_BLUEW2);
 
-    console.log("🔍 Query Embedding:", queryEmbedding);
-
-    // Query Qdrant for similar vectors
-    const searchResult = await qdrant.search({
-      collection_name: COLLECTION_NAME,
-      vector: queryEmbedding,
-      top: 5,
-      with_payload: true,
+    // 🔥 Generate Dense Embeddings
+    const embeddingResponse = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({ input: message, model: "text-embedding-3-large" }),
     });
 
-    console.log("🔍 Search Result:", JSON.stringify(searchResult, null, 2));
-
-    const results = searchResult.result;
-
-    if (!results.length) {
-      return null;
+    const embeddingData = await embeddingResponse.json();
+    if (!embeddingData.data || embeddingData.data.length === 0) {
+      throw new Error("🚨 No embedding data received from OpenAI.");
     }
 
-    // Format the retrieved contexts
-    const relevantContext = results.map(doc => `📌 **Fonte:** ${doc.payload.source}\n${doc.payload.content}`).join("\n\n");
-    return relevantContext;
+    const queryVector = embeddingData.data[0].embedding;
+
+    // 🔥 Create Sparse Embeddings
+    const sparseVector = {
+      indices: queryVector.map((_, i) => i),
+      values: queryVector.map(v => (v > 0 ? 1 : 0)), // Basic sparse embedding
+    };
+
+    // 🔍 Query Pinecone (Dense Search)
+    const pineconeResponseDense = await indexDense.query({
+      vector: queryVector,
+      topK: 5,
+      includeMetadata: true,
+      includeValues: false,
+    });
+
+    // 🔍 Query Pinecone (Sparse Search)
+    const pineconeResponseSparse = await indexSparse.query({
+      vector: queryVector,
+      sparseVector: sparseVector,
+      topK: 5,
+      includeMetadata: true,
+      includeValues: false,
+    });
+
+    // Extract metadata dynamically
+    function formatMatchMetadata(match) {
+     let metadataText = Object.entries(match.metadata)
+        .map(([key, value]) => `**${key}**: ${value}`)
+        .join("\n");
+     return `📌 **Match Found:**\n${metadataText}`;
+    }
+    
+    // Extract results
+    let relevantMatchesDense = pineconeResponseDense.matches.map(formatMatchMetadata);
+    let relevantMatchesSparse = pineconeResponseSparse.matches.map(formatMatchMetadata);
+
+    // Fetch context from files
+    const fileContext = await fetchFileContext(message);
+
+    // Combine contexts
+    const combinedContext = [
+      "### 🔍 Dense Search Results (BlueW):",
+      relevantMatchesDense.length ? relevantMatchesDense.join("\n") : "No results.",
+      "### 🔍 Sparse Search Results (BlueW2):",
+      relevantMatchesSparse.length ? relevantMatchesSparse.join("\n") : "No results.",
+      fileContext ? `### 📂 File Results:\n${fileContext}` : ""
+    ].join("\n\n");
+
+    return combinedContext;
   } catch (error) {
     console.error("❌ Error in fetchContext:", error.message);
     return null;
@@ -314,6 +215,7 @@ async function generateResponse(message, context, provider, model) {
     chatHistory.splice(0, 2);
   }
 
+  const MAX_CONTEXT_LENGTH = 2000;
   const trimmedContext = context ? context.substring(0, MAX_CONTEXT_LENGTH) : "";
 
   let systemMessage = `
@@ -323,7 +225,7 @@ Forneça informações sobre inversores e geradores híbridos.
 consumo em kWh/mês dividido por (5.2 (irradiação Goiás) x 30 (dias de geração) x 0.8 (fator perda do sistema)).
   `;
 
-  // 🛠️ **Use AI Search Context if Available**
+  // 🛠️ **Use Pinecone and File-based Context if Available**
   if (trimmedContext) {
     systemMessage += `
 ### 📌 Informações Recuperadas:
@@ -352,39 +254,33 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
       model = "gpt-4o";
     }
 
-    try {
-      const chatResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            { role: "system", content: systemMessage },
-            ...chatHistory.slice(-6),
-            { role: "user", content: message },
-          ],
-          max_tokens: 1500,
-          temperature: 0.7,
-        }),
-      });
+    const chatResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          { role: "system", content: systemMessage },
+          ...chatHistory.slice(-6),
+          { role: "user", content: message },
+        ],
+        max_tokens: 1500,
+        temperature: 0.7,
+      }),
+    });
 
-      const openaiData = await chatResponse.json();
-      console.log("💬 OpenAI Response:", JSON.stringify(openaiData, null, 2));
+    const openaiData = await chatResponse.json();
+    console.log("💬 OpenAI Response:", JSON.stringify(openaiData, null, 2));
 
-      if (openaiData.choices?.[0]?.message?.content) {
-        const replyContent = openaiData.choices[0].message.content.trim();
-        chatHistory.push({ role: "assistant", content: replyContent });
-        return replyContent;
-      }
-
-      return "Nenhuma resposta gerada.";
-    } catch (error) {
-      console.error("❌ Error generating OpenAI response:", error.message);
-      return "Ocorreu um erro ao gerar a resposta.";
+    if (openaiData.choices?.[0]?.message?.content) {
+      chatHistory.push({ role: "assistant", content: openaiData.choices[0].message.content.trim() });
+      return openaiData.choices[0].message.content.trim();
     }
+
+    return "Nenhuma resposta gerada.";
   } else {
     throw new Error("Invalid provider selected.");
   }
@@ -397,12 +293,13 @@ ${chatHistory.slice(-6).map(msg => msg.role === "user" ? `👤 Usuário: ${msg.c
 app.post("/chatbot", async (req, res) => {
   const { message, provider, model } = req.body;
 
-  if (!message || !provider || (provider === "openai" && !model)) {
+  if (!message || !provider) {
     return res.status(400).json({ error: "Message, provider, and model are required." });
   }
 
   try {
     const context = await fetchContext(message);
+
     const reply = await generateResponse(message, context, provider, model);
     res.json({ reply });
   } catch (error) {
@@ -411,14 +308,7 @@ app.post("/chatbot", async (req, res) => {
   }
 });
 
-/**
- * 🏁 Start the server and load documents
- */
-app.listen(PORT, async () => {
+// 🚀 **Start the server**
+app.listen(PORT, () => {
   console.log(`🚀 Server running at: http://localhost:${PORT}`);
-  try {
-    await loadDocuments();
-  } catch (error) {
-    console.error("❌ Error loading documents:", error.message);
-  }
 });
