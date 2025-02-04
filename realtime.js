@@ -6,7 +6,13 @@ async function initRealtime() {
     // 1. Obter um token efêmero do servidor
     const tokenResponse = await fetch('/session');
     const tokenData = await tokenResponse.json();
-    const EPHEMERAL_KEY = tokenData.client_secret.value;
+    // Verifique se a propriedade retornada está correta; ajuste se necessário
+    const EPHEMERAL_KEY = tokenData.client_secret && tokenData.client_secret.value 
+      ? tokenData.client_secret.value 
+      : null;
+    if (!EPHEMERAL_KEY) {
+      throw new Error("Token efêmero não encontrado na resposta do /session");
+    }
     console.log("Token efêmero obtido:", EPHEMERAL_KEY);
 
     // 2. Criar uma RTCPeerConnection
@@ -23,6 +29,7 @@ async function initRealtime() {
     pc.ontrack = (event) => {
       // Ao receber uma track, define o stream do elemento de áudio
       const [remoteStream] = event.streams;
+      console.log("Recebido stream remoto:", remoteStream);
       audioEl.srcObject = remoteStream;
     };
 
@@ -40,6 +47,8 @@ async function initRealtime() {
 
     // 5. Configurar o canal de dados para envio e recebimento de eventos
     const dc = pc.createDataChannel("oai-events");
+    // Expor o canal globalmente para uso em outras partes da aplicação
+    window.oaiDataChannel = dc;
     dc.addEventListener("message", (e) => {
       const realtimeEvent = JSON.parse(e.data);
       console.log("Evento recebido do servidor Realtime:", realtimeEvent);
