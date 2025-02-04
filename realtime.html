@@ -17,7 +17,7 @@
       padding: 20px;
       background-color: #1e1e1e;
       border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
     }
     h2 {
       text-align: center;
@@ -127,18 +127,19 @@
   <!-- Load Marked (a Markdown parser) from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script>
+    // Seleciona os elementos da página
     const chatLog = document.getElementById('chat-log');
     const chatInput = document.getElementById('chat-input');
     const sendBtn = document.getElementById('send-btn');
     const uploadForm = document.getElementById('upload-form');
     const recordBtn = document.getElementById('record-btn');
 
-    // Append a message to the chat log, converting markdown for assistant replies.
+    // Função para adicionar uma mensagem no chat
     function appendMessage(role, content) {
       const msgDiv = document.createElement('div');
       msgDiv.classList.add('message', role);
       if (role === 'assistant') {
-        // Convert markdown to HTML using marked.
+        // Converte Markdown para HTML usando marked
         msgDiv.innerHTML = marked.parse(content);
       } else {
         msgDiv.textContent = content;
@@ -147,7 +148,7 @@
       chatLog.scrollTop = chatLog.scrollHeight;
     }
 
-    // Enviar mensagem de chat via API
+    // Envia a mensagem de chat via API
     sendBtn.addEventListener('click', async () => {
       const message = chatInput.value.trim();
       if (!message) return;
@@ -163,7 +164,7 @@
         const data = await response.json();
         let reply = '';
 
-        // Tenta extrair a resposta do assistente de diferentes propriedades.
+        // Tenta extrair a resposta do assistente de diferentes propriedades
         if (data.chat_completion && data.chat_completion.choices && data.chat_completion.choices.length > 0) {
           reply = data.chat_completion.choices[0].message.content;
         } else if (data.choices && data.choices.length > 0) {
@@ -180,14 +181,14 @@
       }
     });
 
-    // Permite enviar mensagem com a tecla Enter.
+    // Permite enviar a mensagem com a tecla Enter
     chatInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
         sendBtn.click();
       }
     });
 
-    // Lida com o upload de arquivos.
+    // Lida com o upload de arquivos
     uploadForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fileInput = document.getElementById('file-input');
@@ -205,19 +206,19 @@
         });
         const result = await response.json();
         alert('File uploaded successfully.');
-        fileInput.value = ''; // Limpa o input do arquivo.
+        fileInput.value = ''; // Limpa o input do arquivo
       } catch (error) {
         console.error('File upload error:', error);
         alert('File upload failed.');
       }
     });
 
-    // Lida com a gravação de áudio e envio para a IA realtime.
+    // Lida com a gravação de áudio e envio para a IA realtime
     let mediaRecorder;
     let audioChunks = [];
 
     recordBtn.addEventListener('click', async () => {
-      // Se o botão estiver no estado de "Gravar Áudio", inicia a gravação.
+      // Se o botão estiver com o texto "Gravar Áudio", inicia a gravação
       if (recordBtn.textContent === 'Gravar Áudio') {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -232,7 +233,7 @@
 
           mediaRecorder.onstop = () => {
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            // Envia o áudio para o endpoint /api/voice.
+            // Envia o áudio para o endpoint /api/voice
             const formData = new FormData();
             formData.append('audio', audioBlob, 'recording.webm');
 
@@ -257,7 +258,7 @@
           alert('Erro ao acessar o microfone.');
         }
       } else {
-        // Se o botão estiver em "Parar Gravação", interrompe a gravação.
+        // Se o botão estiver com o texto "Parar Gravação", para a gravação
         if (mediaRecorder) {
           mediaRecorder.stop();
           recordBtn.textContent = 'Gravar Áudio';
