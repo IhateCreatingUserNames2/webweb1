@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chatbot Realtime - BlueWidow AI</title>
+  <style>
+    body {
+      background-color: #121212;
+      color: #ffffff;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .chat-container {
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 20px;
+      background-color: #1e1e1e;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+    h2 {
+      text-align: center;
+    }
+    #chat-log {
+      height: 400px;
+      overflow-y: auto;
+      border: 1px solid #444;
+      padding: 10px;
+      margin-bottom: 20px;
+      background-color: #2a2a2a;
+      border-radius: 4px;
+    }
+    .message {
+      padding: 8px;
+      margin-bottom: 10px;
+      border-radius: 4px;
+    }
+    .message.user {
+      background-color: #3a3a3a;
+      text-align: right;
+    }
+    .message.assistant {
+      background-color: #555;
+      text-align: left;
+    }
+    .input-container {
+      display: flex;
+      gap: 10px;
+    }
+    .input-container input[type="text"] {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 4px;
+    }
+    .input-container button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      background-color: #4CAF50;
+      color: #fff;
+      cursor: pointer;
+    }
+    /* Estilo opcional para o elemento de áudio remoto */
+    #remote-audio {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <h2>Chatbot Realtime</h2>
+    <div id="chat-log"></div>
+    <div class="input-container">
+      <input type="text" id="chat-input" placeholder="Escreva sua mensagem aqui..." />
+      <button id="send-btn">Enviar</button>
+    </div>
+  </div>
+
+  <!-- Elemento de áudio para reproduzir o stream remoto -->
+  <audio id="remote-audio" autoplay></audio>
+
+  <!-- Carrega o script realtime.js que configura a conexão WebRTC -->
+  <script src="realtime.js"></script>
+
+  <!-- Script para manipulação do chat -->
+  <script>
+    const chatLog = document.getElementById('chat-log');
+    const chatInput = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('send-btn');
+
+    // Função para adicionar mensagens ao chat log
+    function appendMessage(role, content) {
+      const msgDiv = document.createElement('div');
+      msgDiv.classList.add('message', role);
+      msgDiv.textContent = content;
+      chatLog.appendChild(msgDiv);
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+
+    // Simulação de envio de mensagem via data channel do WebRTC
+    // (Este exemplo envia a mensagem para o servidor via data channel se a conexão estiver estabelecida)
+    sendBtn.addEventListener('click', () => {
+      const message = chatInput.value.trim();
+      if (!message) return;
+      appendMessage('user', message);
+      chatInput.value = '';
+
+      // Verifica se o data channel está disponível e envia o evento
+      if (window.oaiDataChannel && window.oaiDataChannel.readyState === 'open') {
+        const eventData = {
+          type: "response.create",
+          response: {
+            modalities: ["text"],
+            instructions: message,
+          },
+        };
+        window.oaiDataChannel.send(JSON.stringify(eventData));
+        console.log("Mensagem enviada via data channel:", eventData);
+      } else {
+        appendMessage('assistant', 'Data channel não está disponível no momento.');
+      }
+    });
+
+    // Permite envio da mensagem ao pressionar a tecla Enter
+    chatInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        sendBtn.click();
+      }
+    });
+  </script>
+</body>
+</html>
