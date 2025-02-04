@@ -13,12 +13,13 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from the root folder ****** ITS THE ROOT FOLDER THE CORRECT 
+// Serve static files from the root folder
 app.use(express.static(path.resolve(__dirname)));
 
 // Load environment variables
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
 const ASSISTANT_NAME = process.env.ASSISTANT_NAME || 'bluew';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // Sua chave padrão da OpenAI para criar tokens efêmeros
 const PINECONE_BASE_URL = 'https://prod-1-data.ke.pinecone.io';
 
 // ===============================
@@ -98,6 +99,40 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   } catch (error) {
     console.error('File Upload Error:', error.response?.data || error.message);
     res.status(500).json({ error: 'File upload failed' });
+  }
+});
+
+// ===============================
+// REALTIME ENDPOINTS
+// ===============================
+
+// Endpoint para servir a interface do chatbot em realtime
+app.get('/realtime', (req, res) => {
+  res.sendFile(path.resolve(__dirname, 'realtime.html'));
+});
+
+// Endpoint para gerar um token efêmero para a conexão WebRTC
+app.get('/session', async (req, res) => {
+  try {
+    // Realiza a solicitação para a API da OpenAI para criar uma sessão efêmera
+    const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-realtime-preview-2024-12-17",
+        voice: "verse",
+      }),
+    });
+
+    const data = await response.json();
+    // Retorna o token efêmero para o cliente
+    res.json(data);
+  } catch (error) {
+    console.error('Error generating ephemeral token:', error);
+    res.status(500).json({ error: 'Failed to generate session token' });
   }
 });
 
