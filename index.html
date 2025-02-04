@@ -68,6 +68,19 @@
     .upload-container input[type="file"] {
       margin-right: 10px;
     }
+    .realtime-container {
+      margin-top: 20px;
+      text-align: center;
+    }
+    .realtime-container button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      background-color: #008CBA;
+      color: #fff;
+      cursor: pointer;
+      font-size: 16px;
+    }
     /* Optional: Style markdown-generated HTML elements */
     .assistant h1, .assistant h2, .assistant h3 {
       margin: 10px 0;
@@ -97,11 +110,15 @@
       <button id="send-btn">Send</button>
     </div>
     <div class="upload-container">
-      <h3> Adicione arquivos PDF OU TXT na mémoria da IA </h3>
+      <h3>Adicione arquivos PDF ou TXT na memória da IA</h3>
       <form id="upload-form">
         <input type="file" id="file-input" name="file" accept=".pdf,.txt" />
-        <button type="submit">Enviar para Memoria</button>
+        <button type="submit">Enviar para Memória</button>
       </form>
+    </div>
+    <!-- Botão para acessar a página realtime.html -->
+    <div class="realtime-container">
+      <button onclick="window.location.href='/realtime'">Acessar Chatbot Realtime</button>
     </div>
   </div>
 
