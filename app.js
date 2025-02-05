@@ -5,21 +5,21 @@ const multer = require('multer');
 const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config(); // Load environment variables
+require('dotenv').config(); // Carrega as variáveis de ambiente
 
 const app = express();
 
-// Middleware for parsing JSON and URL-encoded bodies
+// Middleware para parse de JSON e URL-encoded
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from the root folder
+// Serve arquivos estáticos a partir do diretório raiz
 app.use(express.static(path.resolve(__dirname)));
 
-// Load environment variables
+// Variáveis de ambiente
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
 const ASSISTANT_NAME = process.env.ASSISTANT_NAME || 'bluew';
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // Chave padrão da OpenAI para criar tokens efêmeros
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // Chave padrão da OpenAI para gerar tokens efêmeros
 const PINECONE_BASE_URL = 'https://prod-1-data.ke.pinecone.io';
 
 // ===============================
@@ -56,10 +56,9 @@ app.post('/api/chat', async (req, res) => {
 // ===============================
 // FILE UPLOAD ENDPOINT
 // ===============================
-
 const upload = multer({
   dest: 'uploads/',
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
+  limits: { fileSize: 10 * 1024 * 1024 }, // Limite de 10 MB
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['application/pdf', 'text/plain'];
     if (allowedTypes.includes(file.mimetype)) {
@@ -88,7 +87,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       },
     });
 
-    // Delete the temporary file after upload
+    // Remove o arquivo temporário
     fs.unlink(filePath, (err) => {
       if (err) console.error('Error deleting temporary file:', err);
     });
@@ -101,13 +100,11 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 });
 
 // ===============================
-// AUDIO UPLOAD (/api/voice) ENDPOINT
+// AUDIO UPLOAD (VOICE) ENDPOINT
 // ===============================
-
-// Configura uma instância separada do multer para arquivos de áudio
 const audioUpload = multer({
   dest: 'uploads/',
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
+  limits: { fileSize: 10 * 1024 * 1024 }, // Limite de 10 MB
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['audio/webm', 'audio/wav', 'audio/mpeg', 'audio/ogg'];
     if (allowedTypes.includes(file.mimetype)) {
@@ -125,15 +122,14 @@ app.post('/api/voice', audioUpload.single('audio'), async (req, res) => {
 
   try {
     const filePath = req.file.path;
-    // Lê o arquivo de áudio e converte para Base64
+    // Converte o arquivo de áudio para Base64
     const audioBase64 = fs.readFileSync(filePath, { encoding: 'base64' });
-
-    // Deleta o arquivo temporário
+    // Remove o arquivo temporário
     fs.unlink(filePath, (err) => {
       if (err) console.error('Error deleting temporary audio file:', err);
     });
 
-    // Mintar um token efêmero para a API Realtime chamando o endpoint de sessões da OpenAI
+    // Cria uma sessão efêmera chamando a API da OpenAI
     const sessionResponse = await axios.post(
       "https://api.openai.com/v1/realtime/sessions",
       {
@@ -150,7 +146,7 @@ app.post('/api/voice', audioUpload.single('audio'), async (req, res) => {
     const ephemeralKey = sessionResponse.data.client_secret.value;
     console.log("Ephemeral Key obtida para envio de áudio:", ephemeralKey);
 
-    // Construir o payload do evento de conversa para enviar o áudio completo
+    // Cria o payload do evento para enviar o áudio completo como input
     const eventPayload = {
       type: "conversation.item.create",
       item: {
@@ -165,9 +161,9 @@ app.post('/api/voice', audioUpload.single('audio'), async (req, res) => {
       }
     };
 
-    // Enviar o evento para a API Realtime da OpenAI
     const baseUrl = "https://api.openai.com/v1/realtime";
     const model = "gpt-4o-realtime-preview-2024-12-17";
+    // Envia o evento para a API Realtime da OpenAI
     const eventResponse = await axios.post(
       `${baseUrl}?model=${model}`,
       eventPayload,
@@ -179,7 +175,7 @@ app.post('/api/voice', audioUpload.single('audio'), async (req, res) => {
       }
     );
 
-    // Retornar a resposta da API Realtime para o cliente
+    // Supomos que a resposta contenha as propriedades 'transcription' e 'audioResponse' (em Base64)
     res.json(eventResponse.data);
   } catch (error) {
     console.error('Voice API Error:', error.response?.data || error.message);
@@ -188,15 +184,12 @@ app.post('/api/voice', audioUpload.single('audio'), async (req, res) => {
 });
 
 // ===============================
-// REALTIME ENDPOINTS
+// REALTIME ENDPOINTS (para WebRTC)
 // ===============================
-
-// Endpoint para servir a interface do chatbot em realtime
 app.get('/realtime', (req, res) => {
   res.sendFile(path.resolve(__dirname, 'realtime.html'));
 });
 
-// Endpoint para gerar um token efêmero para a conexão WebRTC
 app.get('/session', async (req, res) => {
   try {
     const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
@@ -210,7 +203,6 @@ app.get('/session', async (req, res) => {
         voice: "verse",
       }),
     });
-
     const data = await response.json();
     res.json(data);
   } catch (error) {
