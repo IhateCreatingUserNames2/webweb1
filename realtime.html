@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BlueWidow AI</title>
+  <title>Chatbot Realtime - BlueWidow AI</title>
   <style>
     body {
       background-color: #121212;
@@ -17,7 +17,7 @@
       padding: 20px;
       background-color: #1e1e1e;
       border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
     }
     h2 {
       text-align: center;
@@ -47,6 +47,7 @@
     .input-container {
       display: flex;
       gap: 10px;
+      margin-bottom: 10px;
     }
     .input-container input[type="text"] {
       flex: 1;
@@ -62,40 +63,27 @@
       color: #fff;
       cursor: pointer;
     }
-    .upload-container {
-      margin-top: 20px;
-    }
-    .upload-container input[type="file"] {
-      margin-right: 10px;
-    }
-    .realtime-container {
-      margin-top: 20px;
+    .controls-container {
       text-align: center;
+      margin-top: 10px;
     }
-    .realtime-container button {
+    .controls-container button {
       padding: 10px 20px;
+      margin: 5px;
       border: none;
       border-radius: 4px;
       background-color: #008CBA;
       color: #fff;
       cursor: pointer;
       font-size: 16px;
-      margin: 5px;
     }
-    /* Optional: Style markdown-generated HTML elements */
+    /* Estilização opcional para markdown */
     .assistant h1, .assistant h2, .assistant h3 {
       margin: 10px 0;
       color: #ffcc00;
     }
     .assistant p {
       margin: 10px 0;
-    }
-    .assistant ul {
-      padding-left: 20px;
-    }
-    .assistant hr {
-      border: 1px solid #888;
-      margin: 15px 0;
     }
     .assistant a {
       color: #66aaff;
@@ -104,43 +92,53 @@
 </head>
 <body>
   <div class="chat-container">
-    <h2>Chatbot Assistant</h2>
+    <h2>Chatbot Realtime</h2>
     <div id="chat-log"></div>
+
     <div class="input-container">
-      <input type="text" id="chat-input" placeholder="Escreva sua pergunta aqui..." />
-      <button id="send-btn">Send</button>
+      <input type="text" id="chat-input" placeholder="Escreva sua mensagem aqui..." />
+      <button id="send-btn">Enviar</button>
     </div>
-    <div class="upload-container">
-      <h3>Adicione arquivos PDF ou TXT na memória da IA</h3>
-      <form id="upload-form">
-        <input type="file" id="file-input" name="file" accept=".pdf,.txt" />
-        <button type="submit">Enviar para Memória</button>
-      </form>
-    </div>
-    <!-- Botões para acessar o chat realtime e gravar áudio -->
-    <div class="realtime-container">
-      <button onclick="window.location.href='/realtime'">Acessar Chatbot Realtime</button>
+
+    <div class="controls-container">
+      <!-- Botão para iniciar/parar gravação de áudio -->
       <button id="record-btn">Gravar Áudio</button>
+    </div>
+
+    <!-- Botão para reproduzir a resposta de áudio, se houver -->
+    <div class="controls-container" id="playback-container" style="display: none;">
+      <button id="play-audio-btn">Reproduzir Resposta de Áudio</button>
+    </div>
+
+    <!-- Área para exibir mensagens do chat -->
+    <div class="controls-container">
+      <button onclick="window.location.href='/'">Voltar para Chat Principal</button>
     </div>
   </div>
 
-  <!-- Load Marked (a Markdown parser) from CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Elemento de áudio para reprodução de respostas (usado pelo botão "Reproduzir") -->
+  <audio id="response-audio" controls style="display: none;"></audio>
+
+  <!-- Inclui o script realtime.js para estabelecer a conexão WebRTC -->
+  <script src="realtime.js"></script>
+
+  <!-- Script para o funcionamento do chatbot realtime com gravação e reprodução de áudio -->
   <script>
-    // Seleciona os elementos da página
     const chatLog = document.getElementById('chat-log');
     const chatInput = document.getElementById('chat-input');
     const sendBtn = document.getElementById('send-btn');
-    const uploadForm = document.getElementById('upload-form');
     const recordBtn = document.getElementById('record-btn');
+    const playAudioBtn = document.getElementById('play-audio-btn');
+    const playbackContainer = document.getElementById('playback-container');
+    const responseAudio = document.getElementById('response-audio');
 
-    // Função para adicionar uma mensagem no chat
+    // Função para adicionar mensagens ao chat
     function appendMessage(role, content) {
       const msgDiv = document.createElement('div');
       msgDiv.classList.add('message', role);
+      // Se for mensagem do assistente, converte Markdown para HTML
       if (role === 'assistant') {
-        // Converte Markdown para HTML usando marked
-        msgDiv.innerHTML = marked.parse(content);
+        msgDiv.innerHTML = content;
       } else {
         msgDiv.textContent = content;
       }
@@ -148,13 +146,12 @@
       chatLog.scrollTop = chatLog.scrollHeight;
     }
 
-    // Envia a mensagem de chat via API
+    // Envia mensagem de texto via endpoint /api/chat
     sendBtn.addEventListener('click', async () => {
       const message = chatInput.value.trim();
       if (!message) return;
       appendMessage('user', message);
       chatInput.value = '';
-
       try {
         const response = await fetch('/api/chat', {
           method: 'POST',
@@ -163,8 +160,6 @@
         });
         const data = await response.json();
         let reply = '';
-
-        // Tenta extrair a resposta do assistente de diferentes propriedades
         if (data.chat_completion && data.chat_completion.choices && data.chat_completion.choices.length > 0) {
           reply = data.chat_completion.choices[0].message.content;
         } else if (data.choices && data.choices.length > 0) {
@@ -188,69 +183,47 @@
       }
     });
 
-    // Lida com o upload de arquivos
-    uploadForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const fileInput = document.getElementById('file-input');
-      if (!fileInput.files || fileInput.files.length === 0) {
-        alert('Please select a file to upload.');
-        return;
-      }
-      const formData = new FormData();
-      formData.append('file', fileInput.files[0]);
-
-      try {
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        });
-        const result = await response.json();
-        alert('File uploaded successfully.');
-        fileInput.value = ''; // Limpa o input do arquivo
-      } catch (error) {
-        console.error('File upload error:', error);
-        alert('File upload failed.');
-      }
-    });
-
-    // Lida com a gravação de áudio e envio para a IA realtime
+    // Variáveis para gravação de áudio
     let mediaRecorder;
     let audioChunks = [];
+    let latestAudioResponse = null; // Armazena a resposta de áudio recebida (Base64)
 
+    // Lida com o botão de gravação de áudio
     recordBtn.addEventListener('click', async () => {
-      // Se o botão estiver com o texto "Gravar Áudio", inicia a gravação
       if (recordBtn.textContent === 'Gravar Áudio') {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           mediaRecorder = new MediaRecorder(stream);
           audioChunks = [];
-
           mediaRecorder.ondataavailable = event => {
             if (event.data.size > 0) {
               audioChunks.push(event.data);
             }
           };
-
           mediaRecorder.onstop = () => {
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
             // Envia o áudio para o endpoint /api/voice
             const formData = new FormData();
             formData.append('audio', audioBlob, 'recording.webm');
-
             fetch('/api/voice', {
               method: 'POST',
               body: formData
             })
             .then(response => response.json())
             .then(data => {
-              appendMessage('assistant', 'Resposta da IA (áudio): ' + JSON.stringify(data));
+              // Exibe o texto da transcrição, se houver, e prepara a reprodução do áudio
+              const transcription = data.transcription || 'Resposta da IA (sem transcrição)';
+              appendMessage('assistant', transcription);
+              if (data.audioResponse) {
+                latestAudioResponse = data.audioResponse; // Assume que é uma string Base64
+                playbackContainer.style.display = 'block';
+              }
             })
             .catch(err => {
               console.error('Erro ao enviar áudio:', err);
               appendMessage('assistant', 'Erro ao enviar áudio.');
             });
           };
-
           mediaRecorder.start();
           recordBtn.textContent = 'Parar Gravação';
         } catch (err) {
@@ -258,12 +231,28 @@
           alert('Erro ao acessar o microfone.');
         }
       } else {
-        // Se o botão estiver com o texto "Parar Gravação", para a gravação
         if (mediaRecorder) {
           mediaRecorder.stop();
           recordBtn.textContent = 'Gravar Áudio';
         }
       }
+    });
+
+    // Lida com o botão para reproduzir a resposta de áudio
+    playAudioBtn.addEventListener('click', () => {
+      if (!latestAudioResponse) return;
+      // Converte a string Base64 em um Blob e cria um objeto URL
+      const byteCharacters = atob(latestAudioResponse);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const audioBlob = new Blob([byteArray], { type: 'audio/webm' });
+      const audioURL = URL.createObjectURL(audioBlob);
+      responseAudio.src = audioURL;
+      responseAudio.style.display = 'block';
+      responseAudio.play();
     });
   </script>
 </body>
