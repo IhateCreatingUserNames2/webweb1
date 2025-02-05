@@ -6,7 +6,6 @@ async function initRealtime() {
     // 1. Obter um token efêmero do servidor
     const tokenResponse = await fetch('/session');
     const tokenData = await tokenResponse.json();
-    // Verifique se a propriedade retornada está correta; ajuste se necessário
     const EPHEMERAL_KEY = tokenData.client_secret && tokenData.client_secret.value 
       ? tokenData.client_secret.value 
       : null;
@@ -27,7 +26,6 @@ async function initRealtime() {
       document.body.appendChild(audioEl);
     }
     pc.ontrack = (event) => {
-      // Ao receber uma track, define o stream do elemento de áudio
       const [remoteStream] = event.streams;
       console.log("Recebido stream remoto:", remoteStream);
       audioEl.srcObject = remoteStream;
@@ -47,12 +45,11 @@ async function initRealtime() {
 
     // 5. Configurar o canal de dados para envio e recebimento de eventos
     const dc = pc.createDataChannel("oai-events");
-    // Expor o canal globalmente para uso em outras partes da aplicação
-    window.oaiDataChannel = dc;
+    window.oaiDataChannel = dc; // Expor globalmente
     dc.addEventListener("message", (e) => {
       const realtimeEvent = JSON.parse(e.data);
       console.log("Evento recebido do servidor Realtime:", realtimeEvent);
-      // Aqui você pode atualizar a interface do chatbot com os eventos recebidos.
+      // Atualize a interface do chatbot conforme necessário
     });
 
     // 6. Criar a oferta SDP e configurar a descrição local
@@ -74,10 +71,7 @@ async function initRealtime() {
 
     // 8. Receber a resposta SDP do servidor e configurar a descrição remota
     const answerSdp = await sdpResponse.text();
-    const answer = {
-      type: "answer",
-      sdp: answerSdp,
-    };
+    const answer = { type: "answer", sdp: answerSdp };
     await pc.setRemoteDescription(answer);
     console.log("Conexão Realtime estabelecida com sucesso.");
 
