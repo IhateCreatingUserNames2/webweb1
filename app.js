@@ -37,7 +37,7 @@ app.post('/api/chat', async (req, res) => {
       {
         messages: [{ role: 'user', content: message }],
         stream: false,
-        model: 'gpt-4o',
+        model: 'gpt-4.1-nano-2025-04-14',
       },
       {
         headers: {
@@ -162,7 +162,7 @@ app.post('/api/voice', audioUpload.single('audio'), async (req, res) => {
     };
 
     const baseUrl = "https://api.openai.com/v1/realtime";
-    const model = "gpt-4o-realtime-preview-2024-12-17";
+    const model = "gpt-4o-mini-realtime-preview";
     // Envia o evento para a API Realtime da OpenAI
     const eventResponse = await axios.post(
       `${baseUrl}?model=${model}`,
@@ -199,7 +199,7 @@ app.get('/session', async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-realtime-preview-2024-12-17",
+        model: "gpt-4o-mini-realtime-preview",
         voice: "verse",
       }),
     });
